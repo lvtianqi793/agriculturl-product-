@@ -31,4 +31,3 @@ public class LoanStatus {
     }
 }
 
-//it is a test for committing in git
