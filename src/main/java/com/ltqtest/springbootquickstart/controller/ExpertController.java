@@ -431,7 +431,7 @@ public class ExpertController {
                 
                 // 添加用户信息
                 // 通过用户ID查询用户信息
-                User user = userRepository.findByUserId(Long.valueOf(appointment.getUserId())).orElse(null);
+                User user = userRepository.findByUserId(appointment.getUserId()).orElse(null);  
                 if (user != null) {
                     Map<String, Object> userMap = new HashMap<>();
                     userMap.put("id", user.getUserId());
@@ -685,7 +685,7 @@ public class ExpertController {
                 appointmentMap.put("status", appointment.getStatus());
                 
                 // 添加用户信息（用户名）
-                User user = userRepository.findByUserId(Long.valueOf(appointment.getUserId())).orElse(null);
+                User user = userRepository.findByUserId(Integer.valueOf(appointment.getUserId())).orElse(null);
                 String userName = "未知用户";
                 if (user != null) {
                     userName = user.getRealName() != null ? user.getRealName() : user.getUsername();

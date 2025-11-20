@@ -30,6 +30,12 @@ public class Result<T> {
     result.setData(data);
     return result;
 }
+    public static <T> Result<T> success(Integer code, String message) {
+    Result<T> result = new Result<>();
+    result.setCode(code);
+    result.setMessage(message);
+    return result;
+}
 
     public static <T> Result<T> error(String message) {
         return error(500, message);
