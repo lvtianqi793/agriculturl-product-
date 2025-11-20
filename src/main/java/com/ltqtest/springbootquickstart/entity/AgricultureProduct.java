@@ -1,3 +1,4 @@
+/* 
 package com.ltqtest.springbootquickstart.entity;
 
 import lombok.Data;
@@ -40,3 +41,5 @@ public class AgricultureProduct {
         return producer != null ? producer.getProducerName() : "未知供应商";
     }
 }
+
+*/

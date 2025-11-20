@@ -15,7 +15,6 @@ import com.ltqtest.springbootquickstart.repository.UserRepository;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.UUID;
 import java.util.logging.Logger;
 import org.springframework.dao.DataAccessException;
@@ -196,16 +195,12 @@ public class UserController {
             if (userId == null || userId <= 0) {
                 return Result.error(400, "参数错误，userId不能为空且必须大于0");
             }
-            
-            // 清理和验证旧密码
-            oldPassword = StringUtils.trimWhitespace(oldPassword);
-            if (oldPassword == null || oldPassword.isEmpty()) {
+            //检查旧密码是否为空
+            if (oldPassword.isEmpty()||oldPassword == null) {
                 return Result.error(400, "旧密码不能为空");
             }
-            
-            // 清理和验证新密码
-            newPassword = StringUtils.trimWhitespace(newPassword);
-            if (newPassword == null || newPassword.isEmpty()) {
+            //检查新密码是否为空
+            if (newPassword.isEmpty()||newPassword == null) {
                 return Result.error(400, "新密码不能为空");
             }
             
