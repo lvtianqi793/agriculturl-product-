@@ -14,4 +14,5 @@ public interface ProductRepository extends JpaRepository<Product, Integer> {
     
     // 根据商品ID查询商品
     Product findByProductId(Integer productId);
+    List<Product> findByUserId(Integer userId);
 }

@@ -17,7 +17,7 @@ public class Product {
     private String productName;
     
     @Column(name = "price", nullable = false)
-    private Float price;
+    private double price;
     
     @Column(name = "producer", nullable = false)
     private String producer;
@@ -30,4 +30,7 @@ public class Product {
     
     @Column(name = "surplus", nullable = false)
     private Integer surplus;
+    
+    @Column(name = "user_id")
+    private Integer userId;
 }
