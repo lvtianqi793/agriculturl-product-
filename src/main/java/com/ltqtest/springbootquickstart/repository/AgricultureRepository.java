@@ -1,3 +1,5 @@
+/* 
+
 package com.ltqtest.springbootquickstart.repository;
 import com.ltqtest.springbootquickstart.entity.AgricultureProduct;
 
@@ -12,3 +14,5 @@ public interface AgricultureRepository extends JpaRepository<AgricultureProduct,
     // 查询所有商品
     List<AgricultureProduct> findAll();
 }
+
+*/

@@ -2,12 +2,10 @@
 package com.ltqtest.springbootquickstart.controller;
 
 import com.ltqtest.springbootquickstart.common.Result;
-import com.ltqtest.springbootquickstart.entity.AgricultureProduct;
 import com.ltqtest.springbootquickstart.entity.Product;
 import com.ltqtest.springbootquickstart.entity.Purchase;
 import com.ltqtest.springbootquickstart.entity.ShoppingCart;
 import com.ltqtest.springbootquickstart.entity.User;
-import com.ltqtest.springbootquickstart.repository.AgricultureRepository;
 import com.ltqtest.springbootquickstart.repository.ProductRepository;
 import com.ltqtest.springbootquickstart.repository.PurchaseRepository;
 import com.ltqtest.springbootquickstart.repository.ShoppingCartRepository;
@@ -20,9 +18,6 @@ import java.util.*;
 @RestController
 @RequestMapping("/api")
 public class AgricultureController {
-
-    @Autowired
-    private AgricultureRepository agricultureRepository;
     
     @Autowired
     private ProductRepository productRepository;
@@ -35,55 +30,6 @@ public class AgricultureController {
     
     @Autowired
     private PurchaseRepository purchaseRepository;
-
-    /**
-     * 助农电商接口 - 展示电商产品
-     * 接口路径: GET /api/agricultural/source
-     * @param nums 请求的产品数量
-     * @return 产品列表及相关信息
-     */
-    @GetMapping("/agricultural/source")
-    public Result<Map<String, Object>> getAgriculturalProducts(@RequestParam(required = false, defaultValue = "10") Integer nums) {
-        try {
-            // 验证参数
-            if (nums == null || nums <= 0) {
-                return Result.error(400, "参数错误：nums必须为正整数");
-            }
-            
-            // 查询所有产品
-            List<AgricultureProduct> products = agricultureRepository.findAll();
-            
-            // 如果数据不足，返回所有可用数据
-            int actualSize = Math.min(nums, products.size());
-            List<AgricultureProduct> limitedProducts = new ArrayList<>();
-            if (actualSize > 0) {
-                limitedProducts = products.subList(0, actualSize);
-            }
-            
-            // 构建响应数据
-            List<Map<String, Object>> productList = new ArrayList<>();
-            for (AgricultureProduct product : limitedProducts) {
-                Map<String, Object> productMap = new HashMap<>();
-                productMap.put("productId", product.getProductId());
-                productMap.put("productName", product.getProductName());
-                productMap.put("price", product.getPrice());
-                productMap.put("producer", product.getProducerName());
-                productMap.put("salesVolume", product.getSalesVolume() != null ? product.getSalesVolume() : 0);
-                productMap.put("ecommerceLink", product.getEcommerceLink() != null ? product.getEcommerceLink() : "");
-                productMap.put("productImg", product.getProductImg() != null ? product.getProductImg() : "");
-                productList.add(productMap);
-            }
-            
-            // 构建响应数据
-            Map<String, Object> responseData = new HashMap<>();
-            responseData.put("products", productList);
-            
-            return Result.success(200, "获取商品列表成功", responseData);
-        } catch (Exception e) {
-            return Result.error(500, "服务器内部错误：" + e.getMessage());
-        }
-    }
-    
     /**
      * 获取商品列表接口
      * 接口路径: GET /api/products
@@ -319,12 +265,11 @@ public class AgricultureController {
             shoppingCart.setProductId(productId);
             shoppingCart.setUserId(userId);
             shoppingCart.setAmount(amount);
-            
-            shoppingCart.setMoney( amount * product.getPrice());
+            shoppingCart.setTotalPrice( amount * product.getPrice());
             shoppingCart.setGetAddress(getAddress);
             
             // 保存到数据库
-            ShoppingCart savedCart = shoppingCartRepository.save(shoppingCart);
+            shoppingCartRepository.save(shoppingCart);
             
             // 更新商品库存
             product.setSurplus(product.getSurplus() - amount);
@@ -495,6 +440,89 @@ public class AgricultureController {
             // 直接返回商品列表数组，符合接口要求的格式
             return Result.success(200, "成功", soldoutProducts);
             
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+
+    /**
+     * 展示购物车接口（买家端）
+     * 接口路径: GET /api/purchaseshow
+     * @param userId 用户ID
+     * @return 购买记录信息列表
+     */
+    @GetMapping("/purchaseshow")
+    public Result<List<Map<String, Object>>> showPurchase(@RequestParam Integer userId) {
+        try {
+            // 验证参数
+            if (userId == null) {
+                return Result.error(400, "用户ID不能为空");
+            }
+            
+            // 查询用户的购买记录信息（只查询未结算的购买记录项）
+            List<Purchase> purchaseItems = purchaseRepository.findByUserId(userId.intValue());
+            
+            // 构建响应数据
+            List<Map<String, Object>> purchaseList = new ArrayList<>();
+            for (Purchase purchaseItem : purchaseItems) {
+                // 查询对应的商品信息
+                Product product = productRepository.findByProductId(purchaseItem.getProductId());
+                if (product != null) {
+                    Map<String, Object> purchaseMap = new HashMap<>();
+                    purchaseMap.put("productName", product.getProductName());
+                    purchaseMap.put("producer", product.getProducer());
+                    purchaseMap.put("productImg", product.getProductImg());
+                    purchaseMap.put("amount", purchaseItem.getAmount());
+                    purchaseMap.put("price", product.getPrice());
+                    purchaseMap.put("totalPrice", product.getPrice() * purchaseItem.getAmount());
+                    purchaseMap.put("sendAddress", purchaseItem.getGetAddress());
+                    purchaseMap.put("createTime", purchaseItem.getCreateTime());
+                    purchaseList.add(purchaseMap);
+                }
+            }
+            
+            return Result.success(200, "成功", purchaseList);
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 展示购买记录接口（买家端）
+     * 接口路径: GET /api/shopshow
+     * @param userId 用户ID
+     * @return 购物车信息列表
+     */
+    @GetMapping("/shopshow")
+    public Result<List<Map<String, Object>>> showShoppingCart(@RequestParam Integer userId) {
+        try {
+            // 验证参数
+            if (userId == null) {
+                return Result.error(400, "用户ID不能为空");
+            }
+            
+            // 查询用户的购物车信息（只查询未结算的购物车项）
+            List<ShoppingCart> cartItems = shoppingCartRepository.findByUserIdAndStatus(userId.intValue(), 1);
+            
+            // 构建响应数据
+            List<Map<String, Object>> cartList = new ArrayList<>();
+            for (ShoppingCart cartItem : cartItems) {
+                // 查询对应的商品信息
+                Product product = productRepository.findByProductId(cartItem.getProductId());
+                if (product != null) {
+                    Map<String, Object> cartMap = new HashMap<>();
+                    cartMap.put("productName", product.getProductName());
+                    cartMap.put("producer", product.getProducer());
+                    cartMap.put("productImg", product.getProductImg());
+                    cartMap.put("amount", cartItem.getAmount());
+                    cartMap.put("price", product.getPrice());
+                    cartMap.put("totalPrice", product.getPrice() * cartItem.getAmount());
+                    cartList.add(cartMap);
+                }
+            }
+            
+            return Result.success(200, "成功", cartList);
         } catch (Exception e) {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }

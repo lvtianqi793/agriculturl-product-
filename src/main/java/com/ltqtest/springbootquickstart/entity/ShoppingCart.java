@@ -27,8 +27,8 @@ public class ShoppingCart {
     @Column(name = "amount", nullable = false)
     private Integer amount;
     
-    @Column(name = "money", nullable = false)
-    private Double money;
+    @Column(name = "total_price", nullable = false)
+    private Double totalPrice;
     
     @Column(name = "get_address", length = 200)
     private String getAddress;
