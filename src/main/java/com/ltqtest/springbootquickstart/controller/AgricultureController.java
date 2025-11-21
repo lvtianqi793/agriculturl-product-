@@ -3,9 +3,11 @@ package com.ltqtest.springbootquickstart.controller;
 
 import com.ltqtest.springbootquickstart.common.Result;
 import com.ltqtest.springbootquickstart.entity.Product;
+import com.ltqtest.springbootquickstart.entity.ProductComment;
 import com.ltqtest.springbootquickstart.entity.Purchase;
 import com.ltqtest.springbootquickstart.entity.ShoppingCart;
 import com.ltqtest.springbootquickstart.entity.User;
+import com.ltqtest.springbootquickstart.repository.ProductCommentRepository;
 import com.ltqtest.springbootquickstart.repository.ProductRepository;
 import com.ltqtest.springbootquickstart.repository.PurchaseRepository;
 import com.ltqtest.springbootquickstart.repository.ShoppingCartRepository;
@@ -30,6 +32,9 @@ public class AgricultureController {
     
     @Autowired
     private PurchaseRepository purchaseRepository;
+    
+    @Autowired
+    private ProductCommentRepository productCommentRepository;
     /**
      * 获取商品列表接口
      * 接口路径: GET /api/products
@@ -136,17 +141,11 @@ public class AgricultureController {
             if (!request.containsKey("price") || request.get("price") == null) {
                 return Result.error(400, "参数错误：商品价格不能为空");
             }
-            if (!request.containsKey("producer") || request.get("producer") == null) {
-                return Result.error(400, "参数错误：发售商不能为空");
-            }
-            if (!request.containsKey("productImg") || request.get("productImg") == null) {
-                return Result.error(400, "参数错误：商品封面URL不能为空");
-            }
-            if (!request.containsKey("surplus") || request.get("surplus") == null) {
-                return Result.error(400, "参数错误：商品数量不能为空");
-            }
             if (!request.containsKey("userId") || request.get("userId") == null) {
                 return Result.error(400, "参数错误：农户ID不能为空");
+            }
+            if (!request.containsKey("totalVolumn") || request.get("totalVolumn") == null) {
+                return Result.error(400, "参数错误：总数量不能为空");
             }
             
             // 解析参数
@@ -154,16 +153,18 @@ public class AgricultureController {
             double price;
             String producer;
             String productImg;
-            Integer surplus; // 这里surplus代表商品数量
+            Integer salesVolume; 
             Integer userId; // 农户ID
+            Integer totalVolumn; // 总销售量
             
             try {
                 productName = request.get("productName").toString();
                 price = Double.parseDouble(request.get("price").toString());
                 producer = request.get("producer").toString();
                 productImg = request.get("productImg").toString();
-                surplus = Integer.parseInt(request.get("surplus").toString());
+                salesVolume = Integer.parseInt(request.get("salesVolume").toString());
                 userId = Integer.parseInt(request.get("userId").toString());
+                totalVolumn = Integer.parseInt(request.get("totalVolumn").toString());
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：数值类型格式不正确");
             }
@@ -179,9 +180,11 @@ public class AgricultureController {
             product.setProductName(productName);
             product.setPrice(price);
             product.setProducer(producer);
+            product.setSalesVolume(0); // 设置销售量
+            product.setSurplus(totalVolumn); // 初始库存为总销售量减去销售量
             // salesVolume默认为0，不需要手动设置
             product.setProductImg(productImg);
-            product.setSurplus(surplus); // 剩余量设置为商品数量
+            product.setTotalVolumn(totalVolumn); // 设置总销售量
             product.setUserId(userId); // 设置农户ID
             
             // 保存到数据库
@@ -190,8 +193,7 @@ public class AgricultureController {
             // 构建响应数据
             Map<String, Object> responseData = new HashMap<>();
             responseData.put("productId", savedProduct.getProductId());
-            responseData.put("status", "success");
-            
+    
             return Result.success(200, "商品添加成功", responseData);
             
         } catch (Exception e) {
@@ -199,6 +201,47 @@ public class AgricultureController {
         }
     }
     
+    /**
+     * 获取农户商品列表接口
+     * 接口路径: GET /api/products/farmer
+     * @param userId 农户用户ID
+     * @return 该农户发布的所有商品信息
+     */
+    @GetMapping("/products/farmer")
+    public Result<Map<String, Object>> getFarmerProducts(@RequestParam Integer userId) {
+        try {
+            // 验证参数
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "参数错误：用户ID无效");
+            }
+            
+            // 查询该农户发布的所有商品
+            List<Product> products = productRepository.findByUserId(userId);
+            
+            // 构建响应数据
+            List<Map<String, Object>> productList = new ArrayList<>();
+            for (Product product : products) {
+                Map<String, Object> productMap = new HashMap<>();
+                productMap.put("productId", product.getProductId());
+                productMap.put("productName", product.getProductName());
+                productMap.put("price", product.getPrice());
+                productMap.put("producer", product.getProducer());
+                productMap.put("salesVolume", product.getSalesVolume());
+                productMap.put("productImg", product.getProductImg());
+                productMap.put("surplus", product.getSurplus());
+                productList.add(productMap);
+            }
+            
+            // 构建响应数据
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("data", productList);
+            
+            return Result.success(200, "获取农户商品列表成功", responseData);
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
     /**
      * 购物车接口 - 将商品加入购物车
      * 接口路径: POST /api/shop
