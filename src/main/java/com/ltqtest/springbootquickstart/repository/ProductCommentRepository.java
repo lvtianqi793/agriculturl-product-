@@ -13,12 +13,15 @@ public interface ProductCommentRepository extends JpaRepository<ProductComment, 
     // 根据评论ID查询评论
     Optional<ProductComment> findByProductCommentId(Long productCommentId);
     
-    // 根据父评论ID查询所有子评论（用于删除评论时级联删除子评论）
+    // 根据父评论ID查询所有子评论
     List<ProductComment> findByRootCommentId(Long rootCommentId);
-    
-    // 根据回复评论ID查询所有回复评论（用于删除评论时级联删除回复评论）
-    List<ProductComment> findByToCommentId(Long toCommentId);
-    
+
     // 根据用户ID和评论ID查询评论（用于验证用户权限）
     Optional<ProductComment> findByProductCommentIdAndUserId(Long productCommentId, Integer userId);
+    
+    // 根据商品ID查询所有评论
+    List<ProductComment> findByProductId(Integer productId);
+    
+    // 根据商品ID查询rootCommentId为null的顶级评论
+    List<ProductComment> findByProductIdAndRootCommentIdIsNull(Integer productId);
 }
