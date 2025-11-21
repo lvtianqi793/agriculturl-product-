@@ -189,21 +189,21 @@ public class AuthController {
                 // 根据用户的expert_id和approver_id字段值返回相应的ID
                 String idToReturn;
                 // expertId和approverId都是Integer类型
-                Integer expertId = user.getExpertId();
-                Integer approverId = user.getApproverId();
+             //   Integer expertId = user.getExpertId();
+             //   Integer approverId = user.getApproverId();
                 
                 // 如果expert_id不为null且不为0，返回expert_id
-                if (expertId != null && expertId != 0) {
-                    idToReturn = String.valueOf(expertId);
-                } 
+              //  if (expertId != null && expertId != 0) {
+              //      idToReturn = String.valueOf(expertId);
+              //  } 
                 // 如果approver_id不为0，返回approver_id
-                else if (approverId != null && approverId != 0) {
-                    idToReturn = String.valueOf(approverId);
-                } 
+              //  else if (approverId != null && approverId != 0) {
+               //     idToReturn = String.valueOf(approverId);
+              //  } 
                 // 否则返回用户的userId
-                else {
+              //  else {
                     idToReturn = String.valueOf(user.getUserId());
-                }
+              //  }
                 
                 response.setId(idToReturn);
                 

@@ -14,8 +14,14 @@ import com.ltqtest.springbootquickstart.repository.ShoppingCartRepository;
 import com.ltqtest.springbootquickstart.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.util.StringUtils;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
@@ -35,6 +41,112 @@ public class AgricultureController {
     
     @Autowired
     private ProductCommentRepository productCommentRepository;
+    
+    // 基础上传路径
+    private final String uploadBasePath = "uploads/";
+    // 图片上传子路径
+    private final String productImgPath = "product_images/";
+    
+    /**
+     * 将本地图片转化为可访问的URL
+     * @param localImagePath 本地图片的完整路径
+     * @param userId 用户ID，用于创建用户专属目录
+     * @return 可通过HTTP访问的图片URL
+     * @throws IOException 当文件操作失败时抛出异常
+     */
+    public String convertLocalImageToUrl(String localImagePath, Integer userId) throws IOException {
+        // 验证参数
+        if (localImagePath == null || localImagePath.isEmpty()) {
+            throw new IOException("本地图片路径不能为空");
+        }
+        if (userId == null || userId <= 0) {
+            throw new IOException("用户ID无效");
+        }
+        
+        // 创建源文件对象
+        File sourceFile = new File(localImagePath);
+        
+        // 验证源文件是否存在
+        if (!sourceFile.exists() || !sourceFile.isFile()) {
+            throw new IOException("本地图片文件不存在：" + localImagePath);
+        }
+        
+        // 获取文件扩展名
+        String originalFilename = sourceFile.getName();
+        String extension = StringUtils.getFilenameExtension(originalFilename);
+        
+        // 确保扩展名不为空
+        if (extension == null || extension.isEmpty()) {
+            throw new IOException("无法识别图片文件类型");
+        }
+        
+        // 生成唯一文件名，避免文件冲突
+        String newFilename = "product_" + userId + "_" + UUID.randomUUID() + "." + extension;
+        
+        // 创建目标目录路径 - 基于用户ID的子目录
+        String targetDirPath = uploadBasePath + productImgPath + userId + File.separator;
+        File targetDir = new File(targetDirPath);
+        
+        // 如果目录不存在，创建目录
+        if (!targetDir.exists()) {
+            if (!targetDir.mkdirs()) {
+                throw new IOException("无法创建目标目录：" + targetDirPath);
+            }
+        }
+        
+        // 创建目标文件路径
+        String targetFilePath = targetDirPath + newFilename;
+        Path targetPath = Paths.get(targetFilePath);
+        
+        // 复制文件
+        Files.copy(Paths.get(localImagePath), targetPath);
+        
+        // 生成可访问的URL（这里假设服务器配置了静态资源映射）
+        // 实际使用时，可能需要根据项目的静态资源配置进行调整
+        String imageUrl = "/api/uploads/product_images/" + userId + "/" + newFilename;
+        
+        return imageUrl;
+    }
+    
+    /**
+     * 提供REST接口，将本地图片转化为URL
+     * 接口路径: POST /api/convert-image
+     * @param request 包含本地图片路径和用户ID的请求参数
+     * @return 包含生成的图片URL的响应
+     */
+    @PostMapping("/convert-image")
+    public Result<Map<String, String>> convertImageToUrl(@RequestBody Map<String, Object> request) {
+        try {
+            // 验证请求参数
+            if (request == null) {
+                return Result.error(400, "请求参数不能为空");
+            }
+            
+            // 获取必要参数
+            String localImagePath = request.get("localImagePath") == null ? null : request.get("localImagePath").toString();
+            Integer userId;
+            
+            try {
+                userId = request.get("userId") == null ? null : Integer.parseInt(request.get("userId").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "用户ID格式不正确");
+            }
+            
+            // 调用核心方法转化图片
+            String imageUrl = convertLocalImageToUrl(localImagePath, userId);
+            
+            // 构建响应数据
+            Map<String, String> responseData = new HashMap<>();
+            responseData.put("imageUrl", imageUrl);
+            
+            return Result.success(200, "图片转化成功", responseData);
+        } catch (IOException e) {
+            return Result.error(400, "图片转化失败：" + e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
     /**
      * 获取商品列表接口
      * 接口路径: GET /api/products
