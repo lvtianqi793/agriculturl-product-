@@ -3,11 +3,9 @@ package com.ltqtest.springbootquickstart.controller;
 
 import com.ltqtest.springbootquickstart.common.Result;
 import com.ltqtest.springbootquickstart.entity.Product;
-import com.ltqtest.springbootquickstart.entity.ProductComment;
 import com.ltqtest.springbootquickstart.entity.Purchase;
 import com.ltqtest.springbootquickstart.entity.ShoppingCart;
 import com.ltqtest.springbootquickstart.entity.User;
-import com.ltqtest.springbootquickstart.repository.ProductCommentRepository;
 import com.ltqtest.springbootquickstart.repository.ProductRepository;
 import com.ltqtest.springbootquickstart.repository.PurchaseRepository;
 import com.ltqtest.springbootquickstart.repository.ShoppingCartRepository;
@@ -21,7 +19,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
@@ -38,9 +35,6 @@ public class AgricultureController {
     
     @Autowired
     private PurchaseRepository purchaseRepository;
-    
-    @Autowired
-    private ProductCommentRepository productCommentRepository;
     
     // 基础上传路径
     private final String uploadBasePath = "uploads/";
@@ -148,12 +142,12 @@ public class AgricultureController {
     }
     
     /**
-     * 获取商品列表接口
-     * 接口路径: GET /api/products
+     * 获取商品列表接口(买家端)
+     * 接口路径: GET /api/products/buyer
      * @param nums 请求的商品数量
      * @return 商品列表及相关信息
      */
-    @GetMapping("/products")
+    @GetMapping("/products/buyer")
     public Result<Map<String, Object>> getProducts(@RequestParam(required = false, defaultValue = "10") Integer nums) {
         try {
             // 验证参数
@@ -196,12 +190,12 @@ public class AgricultureController {
     }
     
     /**
-     * 获取商品详情接口
-     * 接口路径: GET /api/products/{productId}
+     * 获取商品详情接口(买家端)
+     * 接口路径: GET /api/products/buyer/{productId}
      * @param productId 商品ID
      * @return 商品详细信息
      */
-    @GetMapping("/products/{productId}")
+    @GetMapping("/products/buyer/{productId}")
     public Result<Map<String, Object>> getProductDetail(@PathVariable Integer productId) {
         try {
             // 验证参数
@@ -234,11 +228,11 @@ public class AgricultureController {
     
     /**
      * 添加商品接口
-     * 接口路径: POST /api/products
+     * 接口路径: POST /api/products/farmer/newProduct
      * @param request 商品信息
      * @return 添加结果
      */
-    @PostMapping("/products")
+    @PostMapping("/products/farmer/newProduct")
     public Result<Map<String, Object>> addProduct(@RequestBody Map<String, Object> request) {
         try {
             // 参数校验
@@ -315,16 +309,28 @@ public class AgricultureController {
     
     /**
      * 获取农户商品列表接口
-     * 接口路径: GET /api/products/farmer
+     * 接口路径: GET /api/products/farmer/getMyProducts
      * @param userId 农户用户ID
-     * @return 该农户发布的所有商品信息
+     * @return 该农户发布的所有商品信息数组
      */
-    @GetMapping("/products/farmer")
-    public Result<Map<String, Object>> getFarmerProducts(@RequestParam Integer userId) {
+    @GetMapping("/products/farmer/getMyProducts")
+    public Result<List<Map<String, Object>>> getFarmerProducts(@RequestParam Integer userId) {
         try {
             // 验证参数
             if (userId == null || userId <= 0) {
                 return Result.error(400, "参数错误：用户ID无效");
+            }
+            
+            // 检查用户角色类型是否为1（农户）
+            Optional<User> userOptional = userRepository.findByUserId(userId);
+            if (!userOptional.isPresent()) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            User user = userOptional.get();
+            // 假设User实体类中有getRoleType()方法获取用户角色类型
+            if (user.getRoleType() != 1) {
+                return Result.error(403, "您不是农户，不可看农户发布的商品");
             }
             
             // 查询该农户发布的所有商品
@@ -344,11 +350,7 @@ public class AgricultureController {
                 productList.add(productMap);
             }
             
-            // 构建响应数据
-            Map<String, Object> responseData = new HashMap<>();
-            responseData.put("data", productList);
-            
-            return Result.success(200, "获取农户商品列表成功", responseData);
+            return Result.success(200, "获取农户商品列表成功", productList);
         } catch (Exception e) {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }
@@ -356,11 +358,11 @@ public class AgricultureController {
 
     /**
      * 购物车接口 - 将商品加入购物车
-     * 接口路径: POST /api/shop
+     * 接口路径: POST /api/products/buyer/shop
      * @param request 购物车信息
      * @return 添加结果
      */
-    @PostMapping("/shop")
+    @PostMapping("products/buyer/shop")
     public Result<Map<String, Object>> addToShoppingCart(@RequestBody Map<String, Object> request) {
         try {
             // 参数校验
@@ -425,10 +427,7 @@ public class AgricultureController {
             
             // 保存到数据库
             shoppingCartRepository.save(shoppingCart);
-            
-            // 更新商品库存
-            product.setSurplus(product.getSurplus() - amount);
-            product.setSalesVolume(product.getSalesVolume() + amount);
+         
             productRepository.save(product);
             
             // 构建响应数据
@@ -443,12 +442,12 @@ public class AgricultureController {
     }
     
     /**
-     * 购买商品接口
-     * 接口路径: POST /api/purchase
+     * 直接购买商品接口
+     * 接口路径: POST /api/products/buyer/purchase
      * @param request 购买信息
      * @return 购买结果
      */
-    @PostMapping("/purchase")
+    @PostMapping("products/buyer/purchase")
     public Result<Map<String, Object>> purchaseProduct(@RequestBody Map<String, Object> request) {
         try {
             // 参数校验
@@ -539,7 +538,7 @@ public class AgricultureController {
      * @param userId 农户ID
      * @return 已售出商品列表
      */
-    @GetMapping("/soldout")
+    @GetMapping("/products/farmer/soldout")
     public Result<List<Map<String, Object>>> getSoldOutProducts(@RequestParam Integer userId) {
         try {
             // 验证参数
@@ -602,12 +601,12 @@ public class AgricultureController {
 
 
     /**
-     * 展示购物车接口（买家端）
-     * 接口路径: GET /api/purchaseshow
+     * 展示购买记录（买家端）
+     * 接口路径: GET /api/products/buyer/showPurchase
      * @param userId 用户ID
      * @return 购买记录信息列表
      */
-    @GetMapping("/purchaseshow")
+    @GetMapping("/products/buyer/showPurchase")
     public Result<List<Map<String, Object>>> showPurchase(@RequestParam Integer userId) {
         try {
             // 验证参数
@@ -644,12 +643,12 @@ public class AgricultureController {
     }
 
     /**
-     * 展示购买记录接口（买家端）
-     * 接口路径: GET /api/shopshow
+     * 展示购物车接口（买家端）
+     * 接口路径: GET /api/products/buyer/showshop
      * @param userId 用户ID
      * @return 购物车信息列表
      */
-    @GetMapping("/shopshow")
+    @GetMapping("/products/buyer/showshop")
     public Result<List<Map<String, Object>>> showShoppingCart(@RequestParam Integer userId) {
         try {
             // 验证参数
