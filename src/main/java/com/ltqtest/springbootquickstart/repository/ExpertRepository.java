@@ -13,4 +13,7 @@ public interface ExpertRepository extends JpaRepository<Expert, Integer> {
     
     // 根据专家名称精确查询专家
     Optional<Expert> findByExpertName(String expertName);
+    
+    // 根据专家ID查询专家
+    Optional<Expert> findByExpertId(Integer expertId);
 }
