@@ -266,7 +266,7 @@ public class AgricultureController {
             double price;
             String producer;
             String productImg;
-            Integer salesVolume; 
+            
             Integer userId; // 农户ID
             Integer totalVolumn; // 总销售量
             
@@ -275,7 +275,6 @@ public class AgricultureController {
                 price = Double.parseDouble(request.get("price").toString());
                 producer = request.get("producer").toString();
                 productImg = request.get("productImg").toString();
-                salesVolume = Integer.parseInt(request.get("salesVolume").toString());
                 userId = Integer.parseInt(request.get("userId").toString());
                 totalVolumn = Integer.parseInt(request.get("totalVolumn").toString());
             } catch (NumberFormatException e) {
@@ -885,6 +884,7 @@ public class AgricultureController {
                 for (Purchase purchase : allPurchases) {
                     if (productIds.contains(purchase.getProductId()) && purchase.getStatus() == 3) {
                         Map<String, Object> purchaseMap = new HashMap<>();
+                        purchaseMap.put("purchaseId", purchase.getPurchaseId());
                         purchaseMap.put("productId", purchase.getProductId());
                         purchaseMap.put("amount", purchase.getAmount());
                         purchaseMap.put("totalPrice", purchase.getTotalPrice());
@@ -905,15 +905,32 @@ public class AgricultureController {
     
     /**
      * 农民发货接口
-     * 接口路径: POST /api/products/farmer/sendProduct
-     * @param purchase_id 购买记录ID
+         * 接口路径: POST /api/products/farmer/sendProduct
      * @return 操作结果
      */
     @PostMapping("/products/farmer/sendProduct")
-    public Result<Map<String, Object>> sendProduct(@RequestParam Integer purchase_id) {
+    public Result<Map<String, Object>> sendProduct(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
-            if (purchase_id == null || purchase_id <= 0) {
+            if (request == null || !request.containsKey("purchase_id") || request.get("purchase_id") == null) {
+                return Result.error(400, "参数错误：购买记录ID不能为空");
+            }
+            
+            Integer purchase_id;
+            try {
+                // 尝试转换purchase_id为整数
+                if (request.get("purchase_id") instanceof Number) {
+                    purchase_id = ((Number) request.get("purchase_id")).intValue();
+                } else {
+                    purchase_id = Integer.parseInt(request.get("purchase_id").toString());
+                }
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：购买记录ID格式不正确");
+            }
+            
+            System.out.println("purchase_id:" + purchase_id);
+            // 参数有效性验证
+            if (purchase_id <= 0) {
                 return Result.error(400, "参数错误：购买记录ID无效");
             }
             
@@ -949,10 +966,27 @@ public class AgricultureController {
      * @return 操作结果
      */
     @PostMapping("/products/farmer/cancelPurchase")
-    public Result<Map<String, Object>> farmerCancelPurchase(@RequestParam Integer purchase_id) {
+    public Result<Map<String, Object>> farmerCancelPurchase(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
-            if (purchase_id == null || purchase_id <= 0) {
+            if (request == null || !request.containsKey("purchase_id") || request.get("purchase_id") == null) {
+                return Result.error(400, "参数错误：购买记录ID不能为空");
+            }
+            
+            Integer purchase_id;
+            try {
+                // 尝试转换purchase_id为整数
+                if (request.get("purchase_id") instanceof Number) {
+                    purchase_id = ((Number) request.get("purchase_id")).intValue();
+                } else {
+                    purchase_id = Integer.parseInt(request.get("purchase_id").toString());
+                }
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：购买记录ID格式不正确");
+            }
+            
+            // 参数有效性验证
+            if (purchase_id <= 0) {
                 return Result.error(400, "参数错误：购买记录ID无效");
             }
             
@@ -1055,10 +1089,27 @@ public class AgricultureController {
      * @return 操作结果
      */
     @PostMapping("/products/buyer/receiveProduct")
-    public Result<Map<String, Object>> receiveProduct(@RequestParam Integer purchase_id) {
+    public Result<Map<String, Object>> receiveProduct(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
-            if (purchase_id == null || purchase_id <= 0) {
+            if (request == null || !request.containsKey("purchase_id") || request.get("purchase_id") == null) {
+                return Result.error(400, "参数错误：购买记录ID不能为空");
+            }
+            
+            Integer purchase_id;
+            try {
+                // 尝试转换purchase_id为整数
+                if (request.get("purchase_id") instanceof Number) {
+                    purchase_id = ((Number) request.get("purchase_id")).intValue();
+                } else {
+                    purchase_id = Integer.parseInt(request.get("purchase_id").toString());
+                }
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：购买记录ID格式不正确");
+            }
+            
+            // 参数有效性验证
+            if (purchase_id <= 0) {
                 return Result.error(400, "参数错误：购买记录ID无效");
             }
             
@@ -1093,13 +1144,29 @@ public class AgricultureController {
      * @return 操作结果
      */
     @PostMapping("/products/buyer/cancelPurchase")
-    public Result<Map<String, Object>> buyerCancelPurchase(@RequestParam Integer purchase_id) {
+    public Result<Map<String, Object>> buyerCancelPurchase(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
-            if (purchase_id == null || purchase_id <= 0) {
-                return Result.error(400, "参数错误：购买记录ID无效");
+            if (request == null || !request.containsKey("purchase_id") || request.get("purchase_id") == null) {
+                return Result.error(400, "参数错误：购买记录ID不能为空");
             }
             
+            Integer purchase_id;
+            try {
+                // 尝试转换purchase_id为整数
+                if (request.get("purchase_id") instanceof Number) {
+                    purchase_id = ((Number) request.get("purchase_id")).intValue();
+                } else {
+                    purchase_id = Integer.parseInt(request.get("purchase_id").toString());
+                }
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：购买记录ID格式不正确");
+            }
+            
+            // 参数有效性验证
+            if (purchase_id <= 0) {
+                return Result.error(400, "参数错误：购买记录ID无效");
+            }   
             // 查询购买记录是否存在
             Optional<Purchase> purchaseOptional = purchaseRepository.findById(purchase_id);
             if (!purchaseOptional.isPresent()) {
@@ -1131,10 +1198,27 @@ public class AgricultureController {
      * @return 操作结果
      */
     @PostMapping("/products/buyer/returnPurchase")
-    public Result<Map<String, Object>> buyerReturnPurchase(@RequestParam Integer purchase_id) {
+    public Result<Map<String, Object>> buyerReturnPurchase(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
-            if (purchase_id == null || purchase_id <= 0) {
+            if (request == null || !request.containsKey("purchase_id") || request.get("purchase_id") == null) {
+                return Result.error(400, "参数错误：购买记录ID不能为空");
+            }
+            
+            // 尝试转换purchase_id为整数
+            Integer purchase_id;
+            try {
+                if (request.get("purchase_id") instanceof Number) {
+                    purchase_id = ((Number) request.get("purchase_id")).intValue();
+                } else {
+                    purchase_id = Integer.parseInt(request.get("purchase_id").toString());
+                }
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：购买记录ID格式不正确");
+            }
+            
+            // 参数有效性验证
+            if (purchase_id <= 0) {
                 return Result.error(400, "参数错误：购买记录ID无效");
             }
             
@@ -1171,10 +1255,26 @@ public class AgricultureController {
      * @return 操作结果
      */
     @DeleteMapping("/products/farmer/deleteProduct")
-    public Result<Map<String, Object>> deleteProduct(@RequestParam Integer productId) {
+    public Result<Map<String, Object>> deleteProduct(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
-            if (productId == null || productId <= 0) {
+            if (request == null || !request.containsKey("product_id") || request.get("product_id") == null) {
+                return Result.error(400, "参数错误：农产品ID不能为空");
+            }
+            // 尝试转换product_id为整数
+            Integer productId;
+            try {
+                if (request.get("product_id") instanceof Number) {
+                    productId = ((Number) request.get("product_id")).intValue();
+                } else {
+                    productId = Integer.parseInt(request.get("product_id").toString());
+                }
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：农产品ID格式不正确");
+            }
+            
+            // 参数有效性验证
+            if (productId <= 0) {
                 return Result.error(400, "参数错误：农产品ID无效");
             }
             
