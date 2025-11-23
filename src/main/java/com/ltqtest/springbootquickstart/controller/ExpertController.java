@@ -390,13 +390,25 @@ public class ExpertController {
      */
     @GetMapping("/expert-appointment/pending")
     public Result<List<Map<String, Object>>> getPendingAppointments(
-            @RequestParam("expert_id") Integer expertId,
+            @RequestParam(required = false) Integer user_id,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size) {
         try {
-            // 参数校验
-            if (expertId == null || expertId <= 0) {
-                return Result.error(400, "参数错误：专家ID无效");
+            // 参数校验 - 先进行用户ID校验
+            if (user_id == null || user_id <= 0) {
+                return Result.error(400, "参数错误：用户ID无效");
+            }
+            
+            User user1 = userRepository.findByUserId(user_id).orElse(null);
+            // 检查用户是否存在
+            if (user1 == null) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            Integer expertId = user1.getExpertId();
+            // 检查用户是否关联专家身份
+            if (expertId == null) {
+                return Result.error(403, "该用户不是专家，无法查看预约列表");
             }
             
             if (page < 1 || size < 1 || size > 100) {
@@ -473,11 +485,30 @@ public class ExpertController {
             if (!request.containsKey("appointment_id") || request.get("appointment_id") == null) {
                 return Result.error(400, "参数错误：预约ID不能为空");
             }
-            if (!request.containsKey("expert_id") || request.get("expert_id") == null) {
-                return Result.error(400, "参数错误：专家ID不能为空");
+            if (!request.containsKey("user_id") || request.get("user_id") == null) {
+                return Result.error(400, "参数错误：用户ID不能为空");
             }
             if (!request.containsKey("action") || request.get("action") == null) {
                 return Result.error(400, "参数错误：审批操作不能为空");
+            }
+            
+            // 解析用户ID并查询用户
+            Integer userId;
+            try {
+                userId = Integer.parseInt(request.get("user_id").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：用户ID格式不正确");
+            }
+            
+            User user = userRepository.findByUserId(userId).orElse(null);
+            // 检查用户是否存在
+            if (user == null) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            // 检查用户是否关联专家身份
+            if (user.getExpertId() == null) {
+                return Result.error(403, "该用户不是专家，无法审批预约");
             }
             
             // 解析参数
@@ -486,10 +517,28 @@ public class ExpertController {
             Integer action;
             try {
                 appointmentId = Long.parseLong(request.get("appointment_id").toString());
-                expertId = Integer.parseInt(request.get("expert_id").toString());
-                action = Integer.parseInt(request.get("action").toString());
+                expertId = user.getExpertId();
+                
+                // 处理action参数，支持字符串和数字
+                Object actionObj = request.get("action");
+                if (actionObj instanceof String) {
+                    String actionStr = (String) actionObj;
+                    if ("同意".equals(actionStr)) {
+                        action = 1;
+                    } else if ("拒绝".equals(actionStr)) {
+                        action = 0;
+                    } else {
+                        // 尝试将字符串转换为数字
+                        action = Integer.parseInt(actionStr);
+                    }
+                } else {
+                    // 直接转换为整数
+                    action = Integer.parseInt(actionObj.toString());
+                }
             } catch (NumberFormatException e) {
-                return Result.error(400, "参数错误：预约ID、专家ID或操作类型格式不正确");
+                return Result.error(400, "参数错误：预约ID或操作类型格式不正确");
+            } catch (Exception e) {
+                return Result.error(400, "参数错误：" + e.getMessage());
             }
             
             // 验证action值是否有效
@@ -567,8 +616,8 @@ public class ExpertController {
             if (!request.containsKey("appointment_id") || request.get("appointment_id") == null) {
                 return Result.error(400, "参数错误：预约ID不能为空");
             }
-            if (!request.containsKey("expert_id") || request.get("expert_id") == null) {
-                return Result.error(400, "参数错误：专家ID不能为空");
+            if (!request.containsKey("user_id") || request.get("user_id") == null) {
+                return Result.error(400, "参数错误：用户ID不能为空");
             }
             if (!request.containsKey("status") || request.get("status") == null) {
                 return Result.error(400, "参数错误：状态不能为空");
@@ -576,10 +625,10 @@ public class ExpertController {
             
             // 解析参数
             Long appointmentId;
-            Integer expertId;
+            Integer expertId=userRepository.findByUserId(Integer.parseInt(request.get("user_id").toString())).orElse(null).getExpertId();
             try {
                 appointmentId = Long.parseLong(request.get("appointment_id").toString());
-                expertId = Integer.parseInt(request.get("expert_id").toString());
+                
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：预约ID或专家ID格式不正确");
             }
@@ -640,17 +689,21 @@ public class ExpertController {
      */
     @GetMapping("/expert-appointment/schedule")
     public Result<List<Map<String, Object>>> getAppointmentSchedule(
-            @RequestParam("expert_id") Integer expertId,
+             Integer userId,
             @RequestParam(required = false) String date) {
         try {
             // 参数校验
-            if (expertId == null || expertId <= 0) {
-                return Result.error(400, "参数错误：专家ID无效");
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "参数错误：用户ID无效");
             }
             
-            // 验证专家是否存在
-            if (!expertRepository.existsById(expertId)) {
-                return Result.error(404, "专家不存在");
+            Integer expertId=userRepository.findByUserId(userId).orElse(null).getExpertId();
+            // 验证用户是否存在
+            if (userRepository.findByUserId(userId).orElse(null)==null) {
+                return Result.error(404, "用户不存在");
+            }
+            if(expertId==null||expertId<=0){
+                return Result.error(404, "用户不是专家");
             }
             
             // 查询预约记录

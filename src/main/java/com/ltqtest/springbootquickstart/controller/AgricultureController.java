@@ -1203,7 +1203,7 @@ public class AgricultureController {
             
             // 取消所有该农产品的未完成订单（将状态设置为6）
             for (Purchase purchase : productPurchases) {
-                // 只有未完成的订单才需要取消（状态不是5、6、7）
+                // 只有未完成的订单才需要取消(买家已付款的订单)
                 if (purchase.getStatus() == 3 ) {
                     purchase.setStatus(6);
                     purchaseRepository.save(purchase);
