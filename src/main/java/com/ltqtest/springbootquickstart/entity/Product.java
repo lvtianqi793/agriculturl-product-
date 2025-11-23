@@ -36,4 +36,7 @@ public class Product {
 
     @Column(name = "total_volumn", nullable = false)
     private Integer totalVolumn;
+
+    @Column(name = "status", nullable = false)
+    private Integer status = 1;
 }
