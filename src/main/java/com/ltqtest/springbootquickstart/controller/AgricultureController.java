@@ -168,16 +168,18 @@ public class AgricultureController {
             // 构建响应数据
             List<Map<String, Object>> productList = new ArrayList<>();
             for (Product product : limitedProducts) {
-                Map<String, Object> productMap = new HashMap<>();
-                productMap.put("productId", product.getProductId());
-                productMap.put("productName", product.getProductName());
-                productMap.put("price", product.getPrice());
+                if (product.getStatus() == 1) {
+                    Map<String, Object> productMap = new HashMap<>();
+                    productMap.put("productId", product.getProductId());
+                    productMap.put("productName", product.getProductName());
+                    productMap.put("price", product.getPrice());
                 productMap.put("producer", product.getProducer());
                 productMap.put("salesVolume", product.getSalesVolume());
                 productMap.put("productImg", product.getProductImg());
                 productMap.put("surplus", product.getSurplus());
                 productList.add(productMap);
-            }
+                    }
+                }
             
             // 构建响应数据
             Map<String, Object> responseData = new HashMap<>();
@@ -208,6 +210,11 @@ public class AgricultureController {
             
             if (product == null) {
                 return Result.error(404, "商品不存在");
+            }
+            
+            // 验证商品是否已上架
+            if (product.getStatus() != 1) {
+                return Result.error(400, "商品已下架，无法查看详情");
             }
             
             // 构建响应数据
@@ -308,7 +315,7 @@ public class AgricultureController {
     }
     
     /**
-     * 获取农户商品列表接口
+     * 获取该农户商品列表接口（农户端）
      * 接口路径: GET /api/products/farmer/getMyProducts
      * @param userId 农户用户ID
      * @return 该农户发布的所有商品信息数组
@@ -339,15 +346,18 @@ public class AgricultureController {
             // 构建响应数据
             List<Map<String, Object>> productList = new ArrayList<>();
             for (Product product : products) {
-                Map<String, Object> productMap = new HashMap<>();
-                productMap.put("productId", product.getProductId());
-                productMap.put("productName", product.getProductName());
-                productMap.put("price", product.getPrice());
-                productMap.put("producer", product.getProducer());
-                productMap.put("salesVolume", product.getSalesVolume());
-                productMap.put("productImg", product.getProductImg());
-                productMap.put("surplus", product.getSurplus());
-                productList.add(productMap);
+                // 验证商品是否已上架
+                if (product.getStatus() == 1) {
+                    Map<String, Object> productMap = new HashMap<>();
+                    productMap.put("productId", product.getProductId());
+                    productMap.put("productName", product.getProductName());
+                    productMap.put("price", product.getPrice());
+                    productMap.put("producer", product.getProducer());
+                    productMap.put("salesVolume", product.getSalesVolume());
+                    productMap.put("productImg", product.getProductImg());
+                    productMap.put("surplus", product.getSurplus());
+                    productList.add(productMap);
+                }
             }
             
             return Result.success(200, "获取农户商品列表成功", productList);
@@ -404,6 +414,11 @@ public class AgricultureController {
             Product product = productRepository.findByProductId(productId);
             if (product == null) {
                 return Result.error(404, "商品不存在");
+            }
+            
+            // 验证商品是否已上架
+            if (product.getStatus() != 1) {
+                return Result.error(400, "商品已下架，无法购买");
             }
             
             // 验证用户是否存在
@@ -490,6 +505,11 @@ public class AgricultureController {
                 return Result.error(404, "商品不存在");
             }
             
+            // 验证商品是否已上架
+            if (product.getStatus() != 1) {
+                return Result.error(400, "商品已下架，无法购买");
+            }
+            
             // 验证用户是否存在
             Optional<User> userOptional = userRepository.findByUserId(userId);
             if (!userOptional.isPresent()) {
@@ -507,6 +527,7 @@ public class AgricultureController {
             purchase.setUserId(userId);
             purchase.setAmount(amount);
             purchase.setGetAddress(getAddress);
+            purchase.setStatus(3);
             // 计算总价，注意类型转换
             purchase.setTotalPrice((double) amount * product.getPrice());
             
@@ -677,6 +698,524 @@ public class AgricultureController {
             }
             
             return Result.success(200, "成功", cartList);
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 从购物车中购买商品接口
+     * 接口路径: POST /api/products/buyer/buyshop
+     * @param request 购买信息
+     * @return 购买结果
+     */
+    @PostMapping("/products/buyer/buyshop")
+    public Result<?> buyFromShoppingCart(@RequestBody Map<String, Object> request) {
+        try {
+            // 参数校验
+            if (request == null) {
+                return Result.error(400, "请求参数不能为空");
+            }
+            
+            // 验证必填参数
+            if (!request.containsKey("productId") || request.get("productId") == null) {
+                return Result.error(400, "参数错误：商品ID不能为空");
+            }
+            if (!request.containsKey("userId") || request.get("userId") == null) {
+                return Result.error(400, "参数错误：用户ID不能为空");
+            }
+            
+            // 解析参数
+            Integer productId;
+            Integer userId;
+            
+            try {
+                productId = Integer.parseInt(request.get("productId").toString());
+                userId = Integer.parseInt(request.get("userId").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：数值类型格式不正确");
+            }
+            
+            // 验证商品是否存在
+            Product product = productRepository.findByProductId(productId);
+            if (product == null) {
+                return Result.error(404, "商品不存在");
+            }
+            
+            // 验证商品是否已上架
+            if (product.getStatus() != 1) {
+                return Result.error(400, "商品已下架，无法购买");
+            }
+            
+            // 验证用户是否存在
+            Optional<User> userOptional = userRepository.findByUserId(userId);
+            if (!userOptional.isPresent()) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            // 查询购物车中是否有该商品
+            Optional<ShoppingCart> cartItemOptional = shoppingCartRepository.findByUserIdAndProductIdAndStatus(
+                    userId.intValue(), productId, 1);
+            
+            if (!cartItemOptional.isPresent()) {
+                return Result.error(404, "购物车中没有该商品");
+            }
+            
+            // 获取购物车中的商品
+            ShoppingCart cartItem = cartItemOptional.get();
+            Integer amount = cartItem.getAmount();
+            
+            // 检查库存是否足够
+            if (product.getSurplus() < amount) {
+                return Result.error(400, "商品库存不足，当前库存：" + product.getSurplus());
+            }
+            
+            // 创建购买记录
+            Purchase purchase = new Purchase();
+            purchase.setProductId(productId);
+            purchase.setUserId(userId);
+            purchase.setAmount(amount);
+            purchase.setGetAddress(cartItem.getGetAddress());
+            // 计算总价
+            purchase.setTotalPrice((double) amount * product.getPrice());
+            purchase.setStatus(3);
+            // 保存购买记录
+            purchaseRepository.save(purchase);
+            
+            // 更新商品库存
+            product.setSurplus(product.getSurplus() - amount);
+            product.setSalesVolume(product.getSalesVolume() + amount);
+            productRepository.save(product);
+            
+            // 从购物车中删除该商品
+            shoppingCartRepository.delete(cartItem);
+            
+            return Result.success(200, "购买成功");
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 删除购物车内的某件商品接口（买家端）
+     * 接口路径: DELETE /api/products/buyer/shop/delete
+     * @param productId 商品ID
+     * @param userId 用户ID
+     * @return 删除结果
+     */
+    @DeleteMapping("/products/buyer/shop/delete")
+    public Result<?> deleteShoppingCartItem(@RequestParam Integer productId, @RequestParam Integer userId) {
+        try {
+            // 参数校验
+            if (productId == null) {
+                return Result.error(400, "商品ID不能为空");
+            }
+            if (userId == null) {
+                return Result.error(400, "用户ID不能为空");
+            }
+            
+            // 验证用户是否存在
+            Optional<User> userOptional = userRepository.findByUserId(userId);
+            if (!userOptional.isPresent()) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            // 查询购物车中是否有该商品
+            Optional<ShoppingCart> cartItemOptional = shoppingCartRepository.findByUserIdAndProductIdAndStatus(
+                    userId.intValue(), productId, 1);
+            
+            if (!cartItemOptional.isPresent()) {
+                return Result.error(404, "购物车中没有该商品");
+            }
+            
+            // 删除购物车中的商品
+            ShoppingCart cartItem = cartItemOptional.get();
+            shoppingCartRepository.delete(cartItem);
+            
+            return Result.success(200, "删除成功");
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 查看自己对应的所有买家已付款，待发货的商品接口（农户端）
+     * 接口路径: GET /api/products/farmer/showAllPurchase
+     * @param userId 农户ID
+     * @return 已付款待发货商品列表
+     */
+    @GetMapping("/products/farmer/showAllPurchase")
+    public Result<List<Map<String, Object>>> showAllPurchase(@RequestParam Integer userId) {
+        try {
+            // 参数验证
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "参数错误：农户ID无效");
+            }
+            
+            // 验证农户是否存在
+            Optional<User> userOptional = userRepository.findByUserId(userId);
+            if (!userOptional.isPresent()) {
+                return Result.error(404, "农户不存在");
+            }
+            
+            // 获取该农户的所有商品
+            List<Product> farmerProducts = productRepository.findByUserId(userId);
+            
+            // 构建商品ID集合
+            List<Integer> productIds = new ArrayList<>();
+            for (Product product : farmerProducts) {
+                // 验证商品是否已上架
+                if (product.getStatus() != 1) {
+                    continue;
+                }
+                productIds.add(product.getProductId());
+            }
+            
+            // 构建响应数据列表
+            List<Map<String, Object>> purchaseList = new ArrayList<>();
+            
+            // 如果该农户有商品，则查询这些商品的购买记录
+            if (!productIds.isEmpty()) {
+                // 查询所有购买记录
+                List<Purchase> allPurchases = purchaseRepository.findAll();
+                
+                // 筛选出属于该农户商品且状态为3（已付款待发货）的购买记录
+                for (Purchase purchase : allPurchases) {
+                    if (productIds.contains(purchase.getProductId()) && purchase.getStatus() == 3) {
+                        Map<String, Object> purchaseMap = new HashMap<>();
+                        purchaseMap.put("productId", purchase.getProductId());
+                        purchaseMap.put("amount", purchase.getAmount());
+                        purchaseMap.put("totalPrice", purchase.getTotalPrice());
+                        purchaseMap.put("getAddress", purchase.getGetAddress());
+                        purchaseMap.put("createTime", purchase.getCreateTime());
+                        
+                        purchaseList.add(purchaseMap);
+                    }
+                }
+            }
+            
+            return Result.success(200, "成功", purchaseList);
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 农民发货接口
+     * 接口路径: POST /api/products/farmer/sendProduct
+     * @param purchase_id 购买记录ID
+     * @return 操作结果
+     */
+    @PostMapping("/products/farmer/sendProduct")
+    public Result<Map<String, Object>> sendProduct(@RequestParam Integer purchase_id) {
+        try {
+            // 参数验证
+            if (purchase_id == null || purchase_id <= 0) {
+                return Result.error(400, "参数错误：购买记录ID无效");
+            }
+            
+            // 查询购买记录是否存在
+            Optional<Purchase> purchaseOptional = purchaseRepository.findById(purchase_id);
+            if (!purchaseOptional.isPresent()) {
+                return Result.error(404, "购买记录不存在");
+            }
+            
+            // 获取购买记录
+            Purchase purchase = purchaseOptional.get();
+            
+            // 验证购买记录状态是否为3（已付款待发货）
+            if (purchase.getStatus() != 3) {
+                return Result.error(400, "只能对已付款待发货的商品进行发货操作");
+            }
+            
+            // 更新购买记录状态为4（已发货待签收）
+            purchase.setStatus(4);
+            purchaseRepository.save(purchase);
+            
+            return Result.success(200, "已成功发货");
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 农户取消订单接口
+     * 接口路径: POST /api/products/farmer/cancelPurchase
+     * @param purchase_id 购买记录ID
+     * @return 操作结果
+     */
+    @PostMapping("/products/farmer/cancelPurchase")
+    public Result<Map<String, Object>> farmerCancelPurchase(@RequestParam Integer purchase_id) {
+        try {
+            // 参数验证
+            if (purchase_id == null || purchase_id <= 0) {
+                return Result.error(400, "参数错误：购买记录ID无效");
+            }
+            
+            // 查询购买记录是否存在
+            Optional<Purchase> purchaseOptional = purchaseRepository.findById(purchase_id);
+            if (!purchaseOptional.isPresent()) {
+                return Result.error(404, "购买记录不存在");
+            }
+            
+            // 获取购买记录
+            Purchase purchase = purchaseOptional.get();
+            
+            // 验证购买记录状态是否为3（已付款待发货）
+            if (purchase.getStatus() != 3) {
+                return Result.error(400, "只能对已付款待发货的订单进行取消操作");
+            }
+            
+            // 更新购买记录状态为6（取消状态）
+            purchase.setStatus(6);
+            purchaseRepository.save(purchase);
+            
+            return Result.success(200, "已成功取消");
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 展示某个状态的所有商品接口（农户端）
+     * 接口路径: GET /api/products/farmer/showOneStatusAllProduct
+     * @param userId 农户ID
+     * @param status 购买记录状态
+     * @return 指定状态的商品列表
+     */
+    @GetMapping("/products/farmer/showOneStatusAllProduct")
+    public Result<List<Map<String, Object>>> showOneStatusAllProduct(@RequestParam Integer userId, @RequestParam Integer status) {
+        try {
+            // 参数验证
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "参数错误：农户ID无效");
+            }
+            if (status == null || status < 0) {
+                return Result.error(400, "参数错误：状态值无效");
+            }
+            
+            // 验证农户是否存在
+            Optional<User> userOptional = userRepository.findByUserId(userId);
+            if (!userOptional.isPresent()) {
+                return Result.error(404, "农户不存在");
+            }
+            
+            // 获取该农户的所有商品
+            List<Product> farmerProducts = productRepository.findByUserId(userId);
+            
+            // 构建商品ID集合
+            List<Integer> productIds = new ArrayList<>();
+            for (Product product : farmerProducts) {
+                // 验证商品是否已上架
+                if (product.getStatus() != 1) {
+                    continue;
+                }
+                productIds.add(product.getProductId());
+            }
+            
+            // 构建响应数据列表
+            List<Map<String, Object>> productList = new ArrayList<>();
+            
+            // 如果该农户有商品，则查询这些商品的购买记录
+            if (!productIds.isEmpty()) {
+                // 查询所有购买记录
+                List<Purchase> allPurchases = purchaseRepository.findAll();
+                
+                // 筛选出属于该农户商品且状态符合要求的购买记录
+                for (Purchase purchase : allPurchases) {
+                    if (productIds.contains(purchase.getProductId()) && purchase.getStatus() == status) {
+                        Map<String, Object> productMap = new HashMap<>();
+                        productMap.put("product_id", purchase.getProductId());
+                        productMap.put("amount", purchase.getAmount());
+                        productMap.put("totalPrice", purchase.getTotalPrice());
+                        productMap.put("getAddress", purchase.getGetAddress());
+                        productMap.put("createTime", purchase.getCreateTime());
+                        
+                        productList.add(productMap);
+                    }
+                }
+            }
+            
+            return Result.success(200, "已成功商品", productList);
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 买家收货接口
+     * 接口路径: POST /api/products/buyer/receiveProduct
+     * @param purchase_id 购买记录ID
+     * @return 操作结果
+     */
+    @PostMapping("/products/buyer/receiveProduct")
+    public Result<Map<String, Object>> receiveProduct(@RequestParam Integer purchase_id) {
+        try {
+            // 参数验证
+            if (purchase_id == null || purchase_id <= 0) {
+                return Result.error(400, "参数错误：购买记录ID无效");
+            }
+            
+            // 查询购买记录是否存在
+            Optional<Purchase> purchaseOptional = purchaseRepository.findById(purchase_id);
+            if (!purchaseOptional.isPresent()) {
+                return Result.error(404, "购买记录不存在");
+            }
+            
+            // 获取购买记录
+            Purchase purchase = purchaseOptional.get();
+            
+            // 验证购买记录状态是否为4（已发货待收货）
+            if (purchase.getStatus() != 4) {
+                return Result.error(400, "只能对已发货待收货的商品进行收货操作");
+            }
+            
+            // 更新购买记录状态为5（已收货）
+            purchase.setStatus(5);
+            purchaseRepository.save(purchase);
+            
+            return Result.success(200, "收货成功");
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+     /**
+     * 买家取消订单接口
+     * 接口路径: POST /api/products/buyer/cancelPurchase
+     * @param purchase_id 购买记录ID
+     * @return 操作结果
+     */
+    @PostMapping("/products/buyer/cancelPurchase")
+    public Result<Map<String, Object>> buyerCancelPurchase(@RequestParam Integer purchase_id) {
+        try {
+            // 参数验证
+            if (purchase_id == null || purchase_id <= 0) {
+                return Result.error(400, "参数错误：购买记录ID无效");
+            }
+            
+            // 查询购买记录是否存在
+            Optional<Purchase> purchaseOptional = purchaseRepository.findById(purchase_id);
+            if (!purchaseOptional.isPresent()) {
+                return Result.error(404, "购买记录不存在");
+            }
+            
+            // 获取购买记录
+            Purchase purchase = purchaseOptional.get();
+            
+            // 验证购买记录状态是否为3（已付款待发货）
+            if (purchase.getStatus() != 3) {
+                return Result.error(400, "只能对已付款待发货的订单进行取消操作");
+            }
+            
+            // 更新购买记录状态为6（取消状态）
+            purchase.setStatus(6);
+            purchaseRepository.save(purchase);
+            
+            return Result.success(200, "已成功取消");
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    /**
+     * 买家退货订单接口
+     * 接口路径: POST /api/products/buyer/returnPurchase
+     * @param purchase_id 购买记录ID
+     * @return 操作结果
+     */
+    @PostMapping("/products/buyer/returnPurchase")
+    public Result<Map<String, Object>> buyerReturnPurchase(@RequestParam Integer purchase_id) {
+        try {
+            // 参数验证
+            if (purchase_id == null || purchase_id <= 0) {
+                return Result.error(400, "参数错误：购买记录ID无效");
+            }
+            
+            // 查询购买记录是否存在
+            Optional<Purchase> purchaseOptional = purchaseRepository.findById(purchase_id);
+            if (!purchaseOptional.isPresent()) {
+                return Result.error(404, "购买记录不存在");
+            }
+            
+            // 获取购买记录
+            Purchase purchase = purchaseOptional.get();
+            
+            // 验证购买记录状态是否为4（已发货待收货）或5（已收货）
+            if (purchase.getStatus() != 4||purchase.getStatus()!=5) {
+                return Result.error(400, "只能对已发货待收货或已收货的订单进行退货操作");
+            }
+            
+            
+            // 更新购买记录状态为7（退货状态）
+            purchase.setStatus(7);
+            purchaseRepository.save(purchase);
+            
+            return Result.success(200, "已成功退货");
+            
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 下架已发布的农产品接口
+     * 接口路径: DELETE /api/products/farmer/deleteProduct
+     * @param productId 农产品ID
+     * @return 操作结果
+     */
+    @DeleteMapping("/products/farmer/deleteProduct")
+    public Result<Map<String, Object>> deleteProduct(@RequestParam Integer productId) {
+        try {
+            // 参数验证
+            if (productId == null || productId <= 0) {
+                return Result.error(400, "参数错误：农产品ID无效");
+            }
+            
+            // 查询农产品是否存在
+            Optional<Product> productOptional = productRepository.findById(productId);
+            if (!productOptional.isPresent()) {
+                return Result.error(404, "农产品不存在");
+            }
+            
+            Product product = productOptional.get();
+            
+            // 验证农产品状态是否为1（已发布）
+            if (product.getStatus() != 1) {
+                return Result.error(400, "只能下架已发布的农产品");
+            }
+            
+            // 查询该农产品的所有购买记录
+            List<Purchase> allPurchases = purchaseRepository.findAll();
+            List<Purchase> productPurchases = new ArrayList<>();
+            
+            for (Purchase purchase : allPurchases) {
+                if (purchase.getProductId().equals(productId)) {
+                    productPurchases.add(purchase);
+                }
+            }
+            
+            // 取消所有该农产品的未完成订单（将状态设置为6）
+            for (Purchase purchase : productPurchases) {
+                // 只有未完成的订单才需要取消（状态不是5、6、7）
+                if (purchase.getStatus() == 3 ) {
+                    purchase.setStatus(6);
+                    purchaseRepository.save(purchase);
+                }
+            }
+            
+            // 将农产品状态由1改为2（下架）
+            product.setStatus(2);
+            productRepository.save(product);
+            
+            return Result.success(200, "下架成功");
+            
         } catch (Exception e) {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }
