@@ -6,10 +6,12 @@ import com.ltqtest.springbootquickstart.entity.Product;
 import com.ltqtest.springbootquickstart.entity.Purchase;
 import com.ltqtest.springbootquickstart.entity.ShoppingCart;
 import com.ltqtest.springbootquickstart.entity.User;
+import com.ltqtest.springbootquickstart.entity.UserAddress;
 import com.ltqtest.springbootquickstart.repository.ProductRepository;
 import com.ltqtest.springbootquickstart.repository.PurchaseRepository;
 import com.ltqtest.springbootquickstart.repository.ShoppingCartRepository;
 import com.ltqtest.springbootquickstart.repository.UserRepository;
+import com.ltqtest.springbootquickstart.repository.UserAddressRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.util.StringUtils;
@@ -35,6 +37,9 @@ public class AgricultureController {
     
     @Autowired
     private PurchaseRepository purchaseRepository;
+
+    @Autowired
+    private UserAddressRepository userAddressRepository;
     
     // 基础上传路径
     private final String uploadBasePath = "uploads/";
@@ -392,22 +397,15 @@ public class AgricultureController {
             if (!request.containsKey("amount") || request.get("amount") == null) {
                 return Result.error(400, "参数错误：购买数量不能为空");
             }
-            if (!request.containsKey("getAddress") || request.get("getAddress") == null) {
-                return Result.error(400, "参数错误：收货地址不能为空");
-            }
             
             // 解析参数
             Integer productId;
             Integer userId;
-            Integer amount;
-            String getAddress;
-            
+            Integer amount;     
             try {
                 productId = Integer.parseInt(request.get("productId").toString());
                 userId = Integer.parseInt(request.get("userId").toString());
                 amount = Integer.parseInt(request.get("amount").toString());
-                
-                getAddress = request.get("getAddress").toString();
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：数值类型格式不正确");
             }
@@ -440,8 +438,6 @@ public class AgricultureController {
             shoppingCart.setUserId(userId);
             shoppingCart.setAmount(amount);
             shoppingCart.setTotalPrice( amount * product.getPrice());
-            shoppingCart.setGetAddress(getAddress);
-            
             // 保存到数据库
             shoppingCartRepository.save(shoppingCart);
          
@@ -1326,6 +1322,48 @@ public class AgricultureController {
             
             return Result.success(200, "下架成功");
             
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+     /**
+     * 查看已保存的地址接口
+     * 接口路径: GET /api/products/buyer/getSavedAddress
+     * @param userId 用户ID
+     * @return 用户保存的地址列表
+     */
+    
+    @GetMapping("/products/buyer/getSavedAddress")
+    public Result<?> getSavedAddress(@RequestParam Integer userId) {
+        try {
+            // 验证参数
+            if (userId == null) {
+                return Result.error(400, "参数错误：用户ID不能为空");
+            }
+            // 参数有效性验证
+            if (userId <= 0) {
+                return Result.error(400, "参数错误：用户ID无效");
+            }
+            
+            // 验证用户是否存在
+            if (!userRepository.existsById(userId)) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            // 查询用户的所有地址
+            List<UserAddress> addresses = userAddressRepository.findByUserId(userId);
+            
+            // 构建响应数据
+            List<Map<String, Object>> addressList = new ArrayList<>();
+            for (UserAddress address : addresses) {
+                Map<String, Object> addressMap = new HashMap<>();
+                addressMap.put("addressId", address.getAddressId());
+                addressMap.put("address_name", address.getAddressName());
+                addressList.add(addressMap);
+            }
+            
+            return Result.success(200, "查看地址成功", addressList);
         } catch (Exception e) {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }

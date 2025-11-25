@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @RestController
@@ -622,6 +623,9 @@ public class ExpertController {
             if (!request.containsKey("status") || request.get("status") == null) {
                 return Result.error(400, "参数错误：状态不能为空");
             }
+            if (!request.containsKey("meetTime") || request.get("meetTime") == null) {
+                return Result.error(400, "参数错误：时间不能为空");
+            }
             
             // 解析参数
             Long appointmentId;
@@ -635,6 +639,19 @@ public class ExpertController {
             
             String status = request.get("status").toString();
             String report = request.containsKey("report") ? request.get("report").toString() : null;
+            
+            // 验证和解析meetTime参数
+            LocalDateTime meetTime;
+            try {
+                meetTime = LocalDateTime.parse(request.get("meetTime").toString());
+                
+                // 检查meetTime是否小于当前时间
+                if (LocalDateTime.now().isBefore(meetTime)) {
+                    return Result.error(400, "参数错误：当前时间小于预约时间，不能更新状态");
+                }
+            } catch (Exception e) {
+                return Result.error(400, "参数错误：时间格式不正确，请使用标准时间格式");
+            }
             
             // 验证status值是否有效
             if (!"completed".equals(status) && !"no_show".equals(status)) {
