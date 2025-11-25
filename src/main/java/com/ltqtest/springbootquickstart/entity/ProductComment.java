@@ -31,7 +31,9 @@ public class ProductComment {
     
     @Column(name = "root_comment_id")
     private Long rootCommentId; // 父评论id（可为空）
+
+    @Column(name = "to_comment_id", nullable = false)
+    private Long toCommentId; // 回复的评论id（可为空）
     
-    // 外键约束（在实际使用中，通常通过JPA/Hibernate自动管理）
-    // 如果需要显式定义外键关系，可以使用@ManyToOne等注解
+  
 }

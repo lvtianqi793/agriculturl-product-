@@ -144,7 +144,8 @@ public class ProductCommentController {
             comment.setUserId(request.getUserId());
             comment.setProductId(request.getProductId());
             comment.setRootCommentId(request.getRootCommentId());
-            
+            comment.setCommentLikeCount(0L);
+            comment.setToCommentId(request.getToCommentId());
             // 保存评论到数据库
             productCommentRepository.save(comment);
     
@@ -154,6 +155,7 @@ public class ProductCommentController {
             response.put("content", comment.getContent());
             response.put("rootCommentId", comment.getRootCommentId());
             response.put("sendTime", comment.getSendTime());
+            response.put("toCommentId", comment.getToCommentId());
             return Result.success(200, "成功", response);
         } catch (Exception e) {
             // 捕获异常并返回错误响应
@@ -168,6 +170,7 @@ public class ProductCommentController {
         private Integer userId;
         private Integer productId;
         private Long rootCommentId;
+        private Long toCommentId; // 回复的评论id（可为空）
         
         // Getters and Setters
         public String getContent() {
@@ -193,6 +196,12 @@ public class ProductCommentController {
         }
         public void setRootCommentId(Long rootCommentId) {
             this.rootCommentId = rootCommentId;
+        }
+        public Long getToCommentId() {
+            return toCommentId;
+        }
+        public void setToCommentId(Long toCommentId) {
+            this.toCommentId = toCommentId;
         }
     }
     /**
@@ -255,7 +264,7 @@ public class ProductCommentController {
      * @return 子评论列表
      */
     @GetMapping("/comment/childcomment")
-    public Result<Map<String, Object>> getChildComments(@RequestParam Long product_comment_id) {
+    public Result<List<Map<String, Object>>> getChildComments(@RequestParam Long product_comment_id) {
         try {
             // 验证参数
             if (product_comment_id == null || product_comment_id <= 0) {
@@ -265,14 +274,14 @@ public class ProductCommentController {
             // 查询所有root_comment_id为该product_comment_id的子评论
             List<ProductComment> childComments = productCommentRepository.findByRootCommentId(product_comment_id);
             
-            // 构建响应数据
-            Map<String, Object> responseData = new HashMap<>();
+            // 构建评论列表
             List<Map<String, Object>> commentList = new ArrayList<>();
             
             // 遍历子评论，构建评论信息
             for (ProductComment comment : childComments) {
                 Map<String, Object> commentMap = new HashMap<>();
                 commentMap.put("productCommentId", comment.getProductCommentId());
+                commentMap.put("toCommentId", comment.getToCommentId());
                 commentMap.put("content", comment.getContent());
                 commentMap.put("sendTime", comment.getSendTime());
                 commentMap.put("userId", comment.getUserId());
@@ -280,13 +289,10 @@ public class ProductCommentController {
                 commentList.add(commentMap);
             }
             
-            responseData.put("data", commentList);
-            
-            return Result.success(200, "成功返回子评论", responseData);
+            return Result.success(200, "成功返回子评论", commentList);
         } catch (Exception e) {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }
     }
     
-
 }
