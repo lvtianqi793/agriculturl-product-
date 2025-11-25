@@ -264,8 +264,8 @@ public class AgricultureController {
             // 解析参数
             String productName;
             double price;
-            String producer;
-            String productImg;
+            String producer = "";
+            String productImg = "";
             
             Integer userId; // 农户ID
             Integer totalVolumn; // 总销售量
@@ -273,12 +273,15 @@ public class AgricultureController {
             try {
                 productName = request.get("productName").toString();
                 price = Double.parseDouble(request.get("price").toString());
-                producer = request.get("producer").toString();
-                productImg = request.get("productImg").toString();
+                // 为可空字段提供默认值
+                producer = request.get("producer") != null ? request.get("producer").toString() : "";
+                productImg = request.get("productImg") != null ? request.get("productImg").toString() : "";
                 userId = Integer.parseInt(request.get("userId").toString());
                 totalVolumn = Integer.parseInt(request.get("totalVolumn").toString());
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：数值类型格式不正确");
+            } catch (NullPointerException e) {
+                return Result.error(400, "参数错误：必填字段不能为空");
             }
             
             // 验证农户ID是否存在
@@ -644,6 +647,7 @@ public class AgricultureController {
                 Product product = productRepository.findByProductId(purchaseItem.getProductId());
                 if (product != null) {
                     Map<String, Object> purchaseMap = new HashMap<>();
+                    purchaseMap.put("purchaseId", purchaseItem.getPurchaseId());
                     purchaseMap.put("productName", product.getProductName());
                     purchaseMap.put("producer", product.getProducer());
                     purchaseMap.put("productImg", product.getProductImg());
@@ -652,6 +656,7 @@ public class AgricultureController {
                     purchaseMap.put("totalPrice", product.getPrice() * purchaseItem.getAmount());
                     purchaseMap.put("sendAddress", purchaseItem.getGetAddress());
                     purchaseMap.put("createTime", purchaseItem.getCreateTime());
+                    purchaseMap.put("status", purchaseItem.getStatus());
                     purchaseList.add(purchaseMap);
                 }
             }
@@ -686,6 +691,7 @@ public class AgricultureController {
                 Product product = productRepository.findByProductId(cartItem.getProductId());
                 if (product != null) {
                     Map<String, Object> cartMap = new HashMap<>();
+                    cartMap.put("cartId", cartItem.getCartId());
                     cartMap.put("productName", product.getProductName());
                     cartMap.put("producer", product.getProducer());
                     cartMap.put("productImg", product.getProductImg());
@@ -717,23 +723,29 @@ public class AgricultureController {
             }
             
             // 验证必填参数
-            if (!request.containsKey("productId") || request.get("productId") == null) {
-                return Result.error(400, "参数错误：商品ID不能为空");
-            }
-            if (!request.containsKey("userId") || request.get("userId") == null) {
-                return Result.error(400, "参数错误：用户ID不能为空");
-            }
+           if(!request.containsKey("cartId") || request.get("cartId") == null) {
+               return Result.error(400, "参数错误：购物车ID不能为空");
+           }
+          
             
             // 解析参数
-            Integer productId;
-            Integer userId;
+           
+            Integer cartId;
             
             try {
-                productId = Integer.parseInt(request.get("productId").toString());
-                userId = Integer.parseInt(request.get("userId").toString());
+                cartId = Integer.parseInt(request.get("cartId").toString());
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：数值类型格式不正确");
             }
+            
+            // 验证购物车是否存在
+            Optional<ShoppingCart> cartOptional = shoppingCartRepository.findByCartId(cartId);
+            if (!cartOptional.isPresent()) {
+                return Result.error(404, "购物车不存在");
+            }
+            
+            // 获取购物车中的商品ID
+            Integer productId = cartOptional.get().getProductId();
             
             // 验证商品是否存在
             Product product = productRepository.findByProductId(productId);
@@ -745,6 +757,7 @@ public class AgricultureController {
             if (product.getStatus() != 1) {
                 return Result.error(400, "商品已下架，无法购买");
             }
+            Integer userId = cartOptional.get().getUserId();
             
             // 验证用户是否存在
             Optional<User> userOptional = userRepository.findByUserId(userId);
@@ -752,14 +765,7 @@ public class AgricultureController {
                 return Result.error(404, "用户不存在");
             }
             
-            // 查询购物车中是否有该商品
-            Optional<ShoppingCart> cartItemOptional = shoppingCartRepository.findByUserIdAndProductIdAndStatus(
-                    userId.intValue(), productId, 1);
-            
-            if (!cartItemOptional.isPresent()) {
-                return Result.error(404, "购物车中没有该商品");
-            }
-            
+            Optional<ShoppingCart> cartItemOptional = shoppingCartRepository.findByCartId(cartId);
             // 获取购物车中的商品
             ShoppingCart cartItem = cartItemOptional.get();
             Integer amount = cartItem.getAmount();
@@ -799,37 +805,41 @@ public class AgricultureController {
     /**
      * 删除购物车内的某件商品接口（买家端）
      * 接口路径: DELETE /api/products/buyer/shop/delete
-     * @param productId 商品ID
-     * @param userId 用户ID
+     * @param cartId 购物车ID
      * @return 删除结果
      */
     @DeleteMapping("/products/buyer/shop/delete")
-    public Result<?> deleteShoppingCartItem(@RequestParam Integer productId, @RequestParam Integer userId) {
+    public Result<?> deleteShoppingCartItem(@RequestBody Map<String, Object> request) {
         try {
             // 参数校验
-            if (productId == null) {
-                return Result.error(400, "商品ID不能为空");
-            }
-            if (userId == null) {
-                return Result.error(400, "用户ID不能为空");
+            if (request == null) {
+                return Result.error(400, "请求参数不能为空");
             }
             
-            // 验证用户是否存在
-            Optional<User> userOptional = userRepository.findByUserId(userId);
-            if (!userOptional.isPresent()) {
-                return Result.error(404, "用户不存在");
+            // 验证必填参数
+            if(!request.containsKey("cartId") || request.get("cartId") == null) {
+                return Result.error(400, "参数错误：购物车ID不能为空");
             }
             
+            // 解析参数
+            Integer cartId;
+            
+            try {
+                cartId = Integer.parseInt(request.get("cartId").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：数值类型格式不正确");
+            }
+    
             // 查询购物车中是否有该商品
-            Optional<ShoppingCart> cartItemOptional = shoppingCartRepository.findByUserIdAndProductIdAndStatus(
-                    userId.intValue(), productId, 1);
+            Optional<ShoppingCart> cartItemOptional = shoppingCartRepository.findByCartId(cartId);
             
             if (!cartItemOptional.isPresent()) {
-                return Result.error(404, "购物车中没有该商品");
+                return Result.error(404, "购物车中不存在该条记录");
             }
             
             // 删除购物车中的商品
             ShoppingCart cartItem = cartItemOptional.get();
+            
             shoppingCartRepository.delete(cartItem);
             
             return Result.success(200, "删除成功");
@@ -852,7 +862,7 @@ public class AgricultureController {
             if (userId == null || userId <= 0) {
                 return Result.error(400, "参数错误：农户ID无效");
             }
-            
+           
             // 验证农户是否存在
             Optional<User> userOptional = userRepository.findByUserId(userId);
             if (!userOptional.isPresent()) {
@@ -1193,12 +1203,12 @@ public class AgricultureController {
     }
     /**
      * 买家退货订单接口
-     * 接口路径: POST /api/products/buyer/returnPurchase
+     * 接口路径: POST /api/products/buyer/returnProduct
      * @param purchase_id 购买记录ID
      * @return 操作结果
      */
-    @PostMapping("/products/buyer/returnPurchase")
-    public Result<Map<String, Object>> buyerReturnPurchase(@RequestBody Map<String, Object> request) {
+    @PostMapping("/products/buyer/returnProduct")
+    public Result<Map<String, Object>> buyerReturnProduct(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
             if (request == null || !request.containsKey("purchase_id") || request.get("purchase_id") == null) {
@@ -1232,7 +1242,7 @@ public class AgricultureController {
             Purchase purchase = purchaseOptional.get();
             
             // 验证购买记录状态是否为4（已发货待收货）或5（已收货）
-            if (purchase.getStatus() != 4||purchase.getStatus()!=5) {
+            if (purchase.getStatus() != 4&&purchase.getStatus()!=5) {
                 return Result.error(400, "只能对已发货待收货或已收货的订单进行退货操作");
             }
             

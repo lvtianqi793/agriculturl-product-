@@ -8,12 +8,18 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.DeleteMapping;
+
 import org.springframework.web.multipart.MultipartFile;
 import com.ltqtest.springbootquickstart.common.Result;
 import com.ltqtest.springbootquickstart.entity.User;
+import com.ltqtest.springbootquickstart.entity.UserAddress;
 import com.ltqtest.springbootquickstart.repository.UserRepository;
+import com.ltqtest.springbootquickstart.repository.UserAddressRepository;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -31,6 +37,9 @@ public class UserController {
     
     @Autowired
     private UserRepository userRepository;
+    
+    @Autowired
+    private UserAddressRepository userAddressRepository;
     
     // 不再需要密码加密器
     
@@ -402,6 +411,163 @@ public class UserController {
             }
         } catch (Exception e) {
             throw new RuntimeException("清理旧头像文件失败", e);
+        }
+    }
+    
+    /**
+     * 新增地址接口
+     * 接口路径: POST /api/user/upload/addAddress
+     * 接口说明：新增userId这个人的个人地址
+     * @param userId 用户ID
+     * @param newAddress 新地址
+     * @return Result 操作结果
+     */
+    @PostMapping("/user/upload/addAddress")
+    public Result<?> addAddress(
+            @RequestParam("userId") Integer userId,
+            @RequestParam("newAddress") String newAddress) {
+        try {
+            // 参数验证
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "参数错误：userId不能为空且必须大于0");
+            }
+            if (newAddress == null || newAddress.trim().isEmpty()) {
+                return Result.error(400, "参数错误：新地址不能为空");
+            }
+            
+            // 验证用户是否存在
+            User user = userRepository.findByUserId(userId).orElse(null);
+            if (user == null) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            // 创建新地址
+            UserAddress userAddress = new UserAddress();
+            userAddress.setUserId(userId);
+            userAddress.setAddressName(newAddress);
+            
+            // 保存到数据库
+            userAddressRepository.save(userAddress);
+            
+            return Result.success(200, "新增地址成功！");
+        } catch (Exception e) {
+            logger.severe("新增地址失败: " + e.getMessage());
+            e.printStackTrace();
+            return Result.error(500, "服务器内部错误，请稍后再试");
+        }
+    }
+    
+    /**
+     * 修改地址接口
+     * 接口路径: POST /api/user/upload/modifyAddress
+     * 接口说明：修改个人地址,将addressId对应的地址修改为新地址
+     * @param addressId 地址ID
+     * @param newAddress 新地址
+     * @return Result 操作结果
+     */
+    @PostMapping("/user/upload/modifyAddress")
+    public Result<?> modifyAddress(
+            @RequestParam("addressId") Integer addressId,
+            @RequestParam("newAddress") String newAddress) {
+        try {
+            // 参数验证
+            if (addressId == null || addressId <= 0) {
+                return Result.error(400, "参数错误：addressId不能为空且必须大于0");
+            }
+            if (newAddress == null || newAddress.trim().isEmpty()) {
+                return Result.error(400, "参数错误：新地址不能为空");
+            }
+            
+            // 查找地址是否存在
+            UserAddress userAddress = userAddressRepository.findById(addressId).orElse(null);
+            if (userAddress == null) {
+                return Result.error(404, "地址不存在");
+            }
+            
+            // 更新地址
+            userAddress.setAddressName(newAddress);
+            userAddressRepository.save(userAddress);
+            
+            return Result.success(200, "修改地址成功！");
+        } catch (Exception e) {
+            logger.severe("修改地址失败: " + e.getMessage());
+            e.printStackTrace();
+            return Result.error(500, "服务器内部错误，请稍后再试");
+        }
+    }
+    
+    /**
+     * 删除地址接口
+     * 接口路径: DELETE /api/user/upload/deleteAddress
+     * 接口说明：删除个人地址
+     * @param addressId 地址ID
+     * @return Result 操作结果
+     */
+    @DeleteMapping("/user/upload/deleteAddress")
+    public Result<?> deleteAddress(@RequestParam("addressId") Integer addressId) {
+        try {
+            // 参数验证
+            if (addressId == null || addressId <= 0) {
+                return Result.error(400, "参数错误：addressId不能为空且必须大于0");
+            }
+            
+            // 查找地址是否存在
+            if (!userAddressRepository.existsById(addressId)) {
+                return Result.error(404, "地址不存在");
+            }
+            
+            // 删除地址
+            userAddressRepository.deleteById(addressId);
+            
+            return Result.success(200, "删除地址成功！");
+        } catch (Exception e) {
+            logger.severe("删除地址失败: " + e.getMessage());
+            e.printStackTrace();
+            return Result.error(500, "服务器内部错误，请稍后再试");
+        }
+    }
+    
+    /**
+     * 查看个人地址接口
+     * 接口路径: GET /api/user/upload/address
+     * 接口说明：查看userId对应的所有个人地址
+     * @param userId 用户ID
+     * @return Result 包含地址列表的结果
+     */
+    @GetMapping("/user/upload/address")
+    public Result<Map<String, Object>> getAddress(@RequestParam("userId") Integer userId) {
+        try {
+            // 参数验证
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "参数错误：userId不能为空且必须大于0");
+            }
+            
+            // 验证用户是否存在
+            User user = userRepository.findByUserId(userId).orElse(null);
+            if (user == null) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            // 查询用户的所有地址
+            List<UserAddress> addresses = userAddressRepository.findByUserId(userId);
+            
+            // 构建响应数据
+            List<Map<String, Object>> addressList = new ArrayList<>();
+            for (UserAddress address : addresses) {
+                Map<String, Object> addressMap = new HashMap<>();
+                addressMap.put("addressId", address.getAddressId());
+                addressMap.put("address_name", address.getAddressName());
+                addressList.add(addressMap);
+            }
+            
+            Map<String, Object> data = new HashMap<>();
+            data.put("addressList", addressList);
+            
+            return Result.success(200, "查看个人地址成功！", data);
+        } catch (Exception e) {
+            logger.severe("查看个人地址失败: " + e.getMessage());
+            e.printStackTrace();
+            return Result.error(500, "服务器内部错误，请稍后再试");
         }
     }
 
