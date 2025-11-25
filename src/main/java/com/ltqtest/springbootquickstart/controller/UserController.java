@@ -9,6 +9,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+
 
 import org.springframework.web.multipart.MultipartFile;
 import com.ltqtest.springbootquickstart.common.Result;
@@ -423,11 +426,11 @@ public class UserController {
      * @return Result 操作结果
      */
     @PostMapping("/user/upload/addAddress")
-    public Result<?> addAddress(
-            @RequestParam("userId") Integer userId,
-            @RequestParam("newAddress") String newAddress) {
+    public Result<Map<String, String>> addAddress(@RequestBody Map<String, String> requestBody) {
         try {
             // 参数验证
+            Integer userId = Integer.parseInt(requestBody.get("userId"));
+            String newAddress = requestBody.get("newAddress");
             if (userId == null || userId <= 0) {
                 return Result.error(400, "参数错误：userId不能为空且必须大于0");
             }
@@ -467,10 +470,11 @@ public class UserController {
      */
     @PostMapping("/user/upload/modifyAddress")
     public Result<?> modifyAddress(
-            @RequestParam("addressId") Integer addressId,
-            @RequestParam("newAddress") String newAddress) {
+           @RequestBody Map<String, String> requestBody) {
         try {
             // 参数验证
+            Integer addressId = Integer.parseInt(requestBody.get("addressId"));
+            String newAddress = requestBody.get("newAddress");
             if (addressId == null || addressId <= 0) {
                 return Result.error(400, "参数错误：addressId不能为空且必须大于0");
             }
@@ -504,7 +508,7 @@ public class UserController {
      * @return Result 操作结果
      */
     @DeleteMapping("/user/upload/deleteAddress")
-    public Result<?> deleteAddress(@RequestParam("addressId") Integer addressId) {
+    public Result<Map<String, String>> deleteAddress(@RequestParam("addressId") Integer addressId) {
         try {
             // 参数验证
             if (addressId == null || addressId <= 0) {
