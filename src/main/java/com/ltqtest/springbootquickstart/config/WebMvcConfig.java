@@ -1,5 +1,3 @@
-/* 
-
 package com.ltqtest.springbootquickstart.config;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -29,5 +27,3 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addResourceLocations("file:" + uploadBasePath + avatarPath);
     }
 }
-
-*/

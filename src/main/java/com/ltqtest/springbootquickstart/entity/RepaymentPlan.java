@@ -28,7 +28,7 @@ public class RepaymentPlan {
     private Date dueDate;
 
     @Column(name = "remainingAmount", nullable = false)
-    private Float remainingAmount;
+    private double remainingAmount;
 
     @Column(name = "status", nullable = false, columnDefinition = "VARCHAR(10) DEFAULT '未还'")
     private String status;

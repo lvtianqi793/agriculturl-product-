@@ -10,4 +10,7 @@ public interface ApprovalRecordRepository extends JpaRepository<ApprovalRecord, 
     
     // 根据贷款申请ID查询审批记录
     List<ApprovalRecord> findByApplicationId(Integer applicationId);
+    
+    // 根据审批人ID查询审批记录
+    List<ApprovalRecord> findByApproverId(Integer approverId);
 }
