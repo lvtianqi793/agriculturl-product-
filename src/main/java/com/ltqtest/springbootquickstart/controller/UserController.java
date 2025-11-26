@@ -105,7 +105,7 @@ public class UserController {
             userData.put("role_type", user.getRoleType());
             userData.put("phone", user.getPhone());
             userData.put("email", user.getEmail());
-            userData.put("image_url", "https://example.com/avatar.jpg"); // 添加默认头像URL
+            userData.put("image_url", user.getImageUrl()); 
             userData.put("expert_id", user.getExpertId() != null ? user.getExpertId() : 0);
             userData.put("approver_id", user.getApproverId() != null ? user.getApproverId() : 0);
             userData.put("create_time", user.getCreateTime());
@@ -132,8 +132,7 @@ public class UserController {
             @RequestParam("userId") Integer userId,
             @RequestParam(value = "real_name", required = false) String realName,
             @RequestParam(value = "phone", required = false) String phone,
-            @RequestParam(value = "email", required = false) String email,
-            @RequestParam(value = "image_url", required = false) String imageUrl) {
+            @RequestParam(value = "email", required = false) String email) {
         try {
             // 参数验证
             if (userId == null || userId <= 0) {
@@ -160,10 +159,6 @@ public class UserController {
             if (email != null && !email.isEmpty()) {
                 user.setEmail(email);
             }
-            if (imageUrl != null && !imageUrl.isEmpty()) {
-                user.setImageUrl(imageUrl);
-            }
-        
             // 5. 保存更新到数据库
             User updatedUser = userRepository.save(user);
             
@@ -173,8 +168,6 @@ public class UserController {
             resultMap.put("realName", updatedUser.getRealName());
             resultMap.put("phone", updatedUser.getPhone());
             resultMap.put("email", updatedUser.getEmail());
-            resultMap.put("imageUrl", updatedUser.getImageUrl());
-            
             return Result.success(200, "更新成功", resultMap);
         } catch (IllegalArgumentException e) {
             // 参数无效异常

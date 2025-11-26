@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -473,6 +472,7 @@ public class ExpertController {
     @PostMapping("/expert-appointment/review")
     public Result<Map<String, Object>> reviewAppointment(@RequestBody Map<String, Object> request) {
         try {
+            
             // 参数校验
             if (request == null) {
                 return Result.error(400, "请求参数不能为空");

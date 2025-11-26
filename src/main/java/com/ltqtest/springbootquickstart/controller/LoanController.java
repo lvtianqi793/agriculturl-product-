@@ -116,7 +116,7 @@ public class LoanController {
      * POST /api/loan/apply
      */
     @PostMapping("/apply")
-    public Result submitLoanApplication(
+    public Result<?> submitLoanApplication(
             @RequestParam(value="userId", required = false) Integer userId,
             @RequestParam(value="productName", required = false) String productName,
             @RequestParam(value="amount", required = false) Integer amount,
@@ -267,7 +267,7 @@ public class LoanController {
      * @return 贷款申请详情及审批记录
      */
     @GetMapping("/applications/{id}")
-    public Result getLoanApplicationDetail(@PathVariable Integer id) {
+    public Result<?> getLoanApplicationDetail(@PathVariable Integer id) {
         try {
             // 查询贷款申请
             Optional<LoanApplication> applicationOpt = loanApplicationRepository.findById(id);
@@ -383,9 +383,9 @@ public class LoanController {
             }
             
             // 设置默认的负责人信息（实际项目中应该从请求中获取或从用户会话中获取）
-            product.setFpManagerName("1");
-            product.setFpManagerPhone("1");
-            product.setFpManagerEmail("1");
+            product.setFpManagerName("暂无名字");
+            product.setFpManagerPhone("暂无电话");
+            product.setFpManagerEmail("暂无邮件");
             
             // 保存产品
             FinancialProduct savedProduct = financialProductRepository.save(product);
@@ -398,6 +398,107 @@ public class LoanController {
         } catch (Exception e) {
             // 异常处理
             return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 修改贷款产品
+     * 接口: /api/loan/modifyproducts
+     * 请求方式: POST
+     * 参数: name, category, maxAmount, minAmount, interestRate, term, description
+     */
+    @PostMapping("/modifyproducts")
+    public Result<?> modifyLoanProduct(@RequestBody Map<String, Object> requestBody) {
+        try {
+            // 获取产品ID，如果没有产品ID，则无法修改
+            Integer productId = null;
+            Object productIdObj = requestBody.get("fpId");
+            if (productIdObj != null) {
+                try {
+                    productId = Integer.valueOf(productIdObj.toString());
+                } catch (NumberFormatException e) {
+                    return Result.error(400, "产品ID格式错误，请输入数字");
+                }
+            }
+            
+            if (productId == null) {
+                return Result.error(400, "缺少产品ID参数");
+            }
+            
+            // 查询产品是否存在
+            Optional<FinancialProduct> productOpt = financialProductRepository.findById(productId);
+            if (!productOpt.isPresent()) {
+                return Result.error(404, "产品不存在");
+            }
+            
+            // 获取现有产品
+            FinancialProduct product = productOpt.get();
+            
+            // 更新产品属性
+            if (requestBody.containsKey("name")) {
+                product.setFpName((String) requestBody.get("name"));
+            }
+            
+            if (requestBody.containsKey("category")) {
+                product.setTags((String) requestBody.get("category"));
+            }
+            
+            if (requestBody.containsKey("maxAmount")) {
+                Object maxAmountObj = requestBody.get("maxAmount");
+                if (maxAmountObj != null) {
+                    try {
+                        product.setMaxAmount(Integer.valueOf(maxAmountObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "最大额度格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("minAmount")) {
+                Object minAmountObj = requestBody.get("minAmount");
+                if (minAmountObj != null) {
+                    try {
+                        product.setMinAmount(Integer.valueOf(minAmountObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "最小额度格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("interestRate")) {
+                Object interestRateObj = requestBody.get("interestRate");
+                if (interestRateObj != null) {
+                    try {
+                        product.setAnnualRate(Float.valueOf(interestRateObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "利率格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("term")) {
+                Object termObj = requestBody.get("term");
+                if (termObj != null) {
+                    try {
+                        product.setTerm(Integer.valueOf(termObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "贷款期限格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("description")) {
+                product.setFpDescription((String) requestBody.get("description"));
+            }
+            
+            // 保存修改后的产品
+            financialProductRepository.save(product);
+            
+            // 返回成功响应
+            return Result.success(200, "修改成功", null);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error(500, "修改产品失败：" + e.getMessage());
         }
     }
     
@@ -609,7 +710,7 @@ public class LoanController {
      * 提交还款记录
      */
     @PostMapping("/repay")
-    public Result repayLoan(@RequestParam Integer applicationId,
+    public Result<?> repayLoan(@RequestParam Integer applicationId,
                            @RequestParam Float amount,
                            @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") Date payDate) {
         try {
@@ -744,7 +845,7 @@ public class LoanController {
      * 查看还款历史
      */
     @GetMapping("/repayments")
-    public Result getRepaymentHistory(@RequestParam Integer userId) {
+    public Result<?> getRepaymentHistory(@RequestParam Integer userId) {
         try {
             // 验证参数
             if (userId == null || userId <= 0) {
@@ -869,7 +970,7 @@ public class LoanController {
     
     // 3. 修改贷款状态
     @PutMapping("/status/{id}")
-    public Result updateLoanStatus(@PathVariable Integer id, @RequestBody Map<String, Object> requestBody) {
+    public Result<?> updateLoanStatus(@PathVariable Integer id, @RequestBody Map<String, Object> requestBody) {
         try {
             // 查询状态是否存在
             Optional<LoanStatus> optionalStatus = loanStatusRepository.findById(id);
@@ -900,7 +1001,7 @@ public class LoanController {
     
     // 4. 删除贷款状态
     @DeleteMapping("/status/{id}")
-    public Result deleteLoanStatus(@PathVariable Integer id) {
+    public Result<?> deleteLoanStatus(@PathVariable Integer id) {
         try {
             // 查询状态是否存在
             if (!loanStatusRepository.existsById(id)) {
@@ -914,6 +1015,41 @@ public class LoanController {
         } catch (Exception e) {
             e.printStackTrace();
             return Result.error(500, "删除贷款状态失败：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 搜索产品接口
+     * 接口: /api/loan/searchproduct
+     * 请求方式: POST
+     * 请求参数: q(产品名字)
+     * 返回: 符合搜索条件的产品列表
+     */
+    @PostMapping("/searchproduct")
+    public Result<?> searchProduct(@RequestParam("q") String productName) {
+        try {
+            // 验证参数
+            if (productName == null || productName.trim().isEmpty()) {
+                return Result.error(400, "搜索关键词不能为空");
+            }
+            
+            // 获取所有产品，然后进行名称过滤（模糊匹配）
+            List<FinancialProduct> allProducts = financialProductRepository.findAll();
+            List<FinancialProduct> matchedProducts = new ArrayList<>();
+            
+            String searchKeyword = productName.toLowerCase().trim();
+            for (FinancialProduct product : allProducts) {
+                // 模糊匹配产品名称
+                if (product.getFpName().toLowerCase().contains(searchKeyword)) {
+                    matchedProducts.add(product);
+                }
+            }
+            
+            // 返回成功响应，包含匹配的产品列表
+            return Result.success(200, "成功", matchedProducts);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error(500, "搜索产品失败：" + e.getMessage());
         }
     }
 }
