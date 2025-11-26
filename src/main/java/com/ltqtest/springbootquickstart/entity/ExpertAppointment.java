@@ -5,6 +5,7 @@ import lombok.Data;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import java.time.LocalTime;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,8 +30,11 @@ public class ExpertAppointment {
     @Column(name = "date", nullable = false)
     private LocalDate date;
     
-    @Column(name = "time", nullable = false)
-    private String time;
+    @Column(name = "startTime", nullable = false)
+    private LocalTime startTime;
+
+    @Column(name = "endTime", nullable = false)
+    private LocalTime endTime;
     
     @Column(name = "topic")
     private String topic;
