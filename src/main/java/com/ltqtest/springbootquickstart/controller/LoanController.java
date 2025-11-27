@@ -10,14 +10,14 @@ import com.ltqtest.springbootquickstart.entity.ApprovalRecord;
 import com.ltqtest.springbootquickstart.entity.RepaymentPlan;
 import com.ltqtest.springbootquickstart.entity.RepaymentRecord;
 import com.ltqtest.springbootquickstart.entity.LoanStatus;
+import com.ltqtest.springbootquickstart.entity.User;
 import com.ltqtest.springbootquickstart.repository.FinancialProductRepository;
 import com.ltqtest.springbootquickstart.repository.LoanApplicationRepository;
 import com.ltqtest.springbootquickstart.repository.ApprovalRecordRepository;
-import com.ltqtest.springbootquickstart.repository.ApproverRepository;
 import com.ltqtest.springbootquickstart.repository.RepaymentPlanRepository;
 import com.ltqtest.springbootquickstart.repository.RepaymentRecordRepository;
 import com.ltqtest.springbootquickstart.repository.LoanStatusRepository;
-import org.springframework.format.annotation.DateTimeFormat;
+import com.ltqtest.springbootquickstart.repository.UserRepository;
 import java.util.Date;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -42,7 +42,7 @@ public class LoanController {
     private ApprovalRecordRepository approvalRecordRepository;
     
     @Autowired
-    private ApproverRepository approverRepository;
+    private UserRepository userRepository;
     
     @Autowired
     private RepaymentPlanRepository repaymentPlanRepository;
@@ -89,7 +89,7 @@ public class LoanController {
                 applicationMap.put("userId", application.getUserId());
                 
                 // 获取产品信息
-                Optional<FinancialProduct> productOpt = financialProductRepository.findById(application.getProductId());
+                Optional<FinancialProduct> productOpt = financialProductRepository.findById(application.getFpId());
                 if (productOpt.isPresent()) {
                     applicationMap.put("productName", productOpt.get().getFpName());
                 } else {
@@ -116,7 +116,7 @@ public class LoanController {
      * POST /api/loan/apply
      */
     @PostMapping("/apply")
-    public Result submitLoanApplication(
+    public Result<?> submitLoanApplication(
             @RequestParam(value="userId", required = false) Integer userId,
             @RequestParam(value="productName", required = false) String productName,
             @RequestParam(value="amount", required = false) Integer amount,
@@ -137,7 +137,7 @@ public class LoanController {
             // 创建贷款申请实体
             LoanApplication application = new LoanApplication();
             application.setUserId(userId);
-            application.setProductId(product.getFpId());
+            application.setFpId(product.getFpId());
             application.setAmount(amount);
             application.setTerm(term);
             application.setStatus(1); // 待审批（对应loan_status表中的1）
@@ -240,7 +240,7 @@ public class LoanController {
                 applicationMap.put("applicationId", application.getApplicationId());
                 
                 // 获取产品信息
-                Optional<FinancialProduct> productOpt = financialProductRepository.findById(application.getProductId());
+                Optional<FinancialProduct> productOpt = financialProductRepository.findById(application.getFpId());
                 if (productOpt.isPresent()) {
                     applicationMap.put("productName", productOpt.get().getFpName());
                 } else {
@@ -267,7 +267,7 @@ public class LoanController {
      * @return 贷款申请详情及审批记录
      */
     @GetMapping("/applications/{id}")
-    public Result getLoanApplicationDetail(@PathVariable Integer id) {
+    public Result<?> getLoanApplicationDetail(@PathVariable Integer id) {
         try {
             // 查询贷款申请
             Optional<LoanApplication> applicationOpt = loanApplicationRepository.findById(id);
@@ -280,7 +280,7 @@ public class LoanController {
             // 构建响应数据
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put("applicationId", application.getApplicationId());
-            resultMap.put("productId", application.getProductId());
+            resultMap.put("fpId", application.getFpId());
             resultMap.put("amount", application.getAmount());
             resultMap.put("term", application.getTerm());
             resultMap.put("status", application.getStatus());
@@ -383,9 +383,9 @@ public class LoanController {
             }
             
             // 设置默认的负责人信息（实际项目中应该从请求中获取或从用户会话中获取）
-            product.setFpManagerName("1");
-            product.setFpManagerPhone("1");
-            product.setFpManagerEmail("1");
+            product.setFpManagerName("暂无名字");
+            product.setFpManagerPhone("暂无电话");
+            product.setFpManagerEmail("暂无邮件");
             
             // 保存产品
             FinancialProduct savedProduct = financialProductRepository.save(product);
@@ -402,26 +402,131 @@ public class LoanController {
     }
     
     /**
+     * 修改贷款产品
+     * 接口: /api/loan/modifyproducts
+     * 请求方式: POST
+     * 参数: name, category, maxAmount, minAmount, interestRate, term, description
+     */
+    @PostMapping("/modifyproducts")
+    public Result<?> modifyLoanProduct(@RequestBody Map<String, Object> requestBody) {
+        try {
+            // 获取产品ID，如果没有产品ID，则无法修改
+            Integer productId = null;
+            Object productIdObj = requestBody.get("fpId");
+            if (productIdObj != null) {
+                try {
+                    productId = Integer.valueOf(productIdObj.toString());
+                } catch (NumberFormatException e) {
+                    return Result.error(400, "产品ID格式错误，请输入数字");
+                }
+            }
+            
+            if (productId == null) {
+                return Result.error(400, "缺少产品ID参数");
+            }
+            
+            // 查询产品是否存在
+            Optional<FinancialProduct> productOpt = financialProductRepository.findById(productId);
+            if (!productOpt.isPresent()) {
+                return Result.error(404, "产品不存在");
+            }
+            
+            // 获取现有产品
+            FinancialProduct product = productOpt.get();
+            
+            // 更新产品属性
+            if (requestBody.containsKey("name")) {
+                product.setFpName((String) requestBody.get("name"));
+            }
+            
+            if (requestBody.containsKey("category")) {
+                product.setTags((String) requestBody.get("category"));
+            }
+            
+            if (requestBody.containsKey("maxAmount")) {
+                Object maxAmountObj = requestBody.get("maxAmount");
+                if (maxAmountObj != null) {
+                    try {
+                        product.setMaxAmount(Integer.valueOf(maxAmountObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "最大额度格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("minAmount")) {
+                Object minAmountObj = requestBody.get("minAmount");
+                if (minAmountObj != null) {
+                    try {
+                        product.setMinAmount(Integer.valueOf(minAmountObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "最小额度格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("interestRate")) {
+                Object interestRateObj = requestBody.get("interestRate");
+                if (interestRateObj != null) {
+                    try {
+                        product.setAnnualRate(Float.valueOf(interestRateObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "利率格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("term")) {
+                Object termObj = requestBody.get("term");
+                if (termObj != null) {
+                    try {
+                        product.setTerm(Integer.valueOf(termObj.toString()));
+                    } catch (NumberFormatException e) {
+                        return Result.error(400, "贷款期限格式错误，请输入数字");
+                    }
+                }
+            }
+            
+            if (requestBody.containsKey("description")) {
+                product.setFpDescription((String) requestBody.get("description"));
+            }
+            
+            // 保存修改后的产品
+            financialProductRepository.save(product);
+            
+            // 返回成功响应
+            return Result.success(200, "修改成功", null);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error(500, "修改产品失败：" + e.getMessage());
+        }
+    }
+    
+    /**
      * 审批贷款申请
      * 接口: /api/loan/approve
      * 请求方式: POST
      * 参数: applicationId, decision（通过/拒绝）, remark
      */
     @PostMapping("/approve")
-    public Result<?> approveLoanApplication(
-            @RequestParam Integer applicationId,
-            @RequestParam Integer approverId,
-            @RequestParam Integer decision,
-            @RequestParam String remark) {
+    public Result<?> approveLoanApplication(@RequestBody Map<String, Object> requestBody) {
         try {
             // 验证必填参数
-            if (applicationId == null || approverId == null || decision == null || remark == null || remark.isEmpty()) {
+            if (!requestBody.containsKey("applicationId") || !requestBody.containsKey("userId") || !requestBody.containsKey("decision") || !requestBody.containsKey("remark")) {
                 return Result.error("缺少必填参数");
             }
+            Integer applicationId = Integer.valueOf(requestBody.get("applicationId").toString());
+            Integer userId = Integer.valueOf(requestBody.get("userId").toString());
+            Integer decision = Integer.valueOf(requestBody.get("decision").toString());
+            String remark = (String) requestBody.get("remark");
             
             // 验证审批人是否存在
-            if (!approverRepository.existsById(approverId)) {
+            if (!userRepository.existsById(userId)) {
                 return Result.error("审批人不存在");
+            }
+            User user = userRepository.findByUserId(userId).get();
+            if(user.getApproverId()==0){
+                return Result.error("用户不是审批人");
             }
             
             // 查询贷款申请是否存在
@@ -456,7 +561,7 @@ public class LoanController {
             // 创建审批记录
             ApprovalRecord approvalRecord = new ApprovalRecord();
             approvalRecord.setApplicationId(applicationId);
-            approvalRecord.setApproverId(approverId);
+            approvalRecord.setApproverId(userRepository.findByUserId(userId).get().getApproverId());
             approvalRecord.setDecision(decision == 1); // true表示通过，false表示拒绝
             approvalRecord.setOpinion(remark);
             approvalRecord.setApprovalTime(new java.util.Date());
@@ -476,39 +581,36 @@ public class LoanController {
      * 生成还款计划
      * @param application 已批准的贷款申请
      */
+    
     private void generateRepaymentPlan(LoanApplication application) {
         try {
             Integer applicationId = application.getApplicationId();
             Integer amount = application.getAmount();
             Integer term = application.getTerm();
-            
-            // 计算每期还款金额（等额本息简单计算，这里简化为平均分配）
-            Float monthlyAmount = (float) amount / term;
-            
+
             // 获取当前日期作为起始日期
             java.util.Calendar calendar = java.util.Calendar.getInstance();
-            
-            // 为每个月生成还款计划
-            for (int i = 0; i < term; i++) {
-                // 计算还款日（从下个月开始，每月的最后一天）
-                calendar.add(java.util.Calendar.MONTH, 1);
-                calendar.set(java.util.Calendar.DAY_OF_MONTH, calendar.getActualMaximum(java.util.Calendar.DAY_OF_MONTH));
-                
+            Integer fpId = application.getFpId();
+            FinancialProduct financialProduct = financialProductRepository.findById(fpId).get();
+            double annualRate = financialProduct.getAnnualRate();
+            double totalAmount=amount+amount*annualRate*0.01*term/12;
                 // 创建还款计划实体
                 RepaymentPlan repaymentPlan = new RepaymentPlan();
                 repaymentPlan.setApplicationId(applicationId);
+                // 将截止时间设置为当前时间+term个月
+                calendar.add(java.util.Calendar.MONTH, term);
                 repaymentPlan.setDueDate(calendar.getTime());
-                repaymentPlan.setRemainingAmount(monthlyAmount);
+                repaymentPlan.setRemainingAmount(totalAmount);
                 repaymentPlan.setStatus("未还");
                 
                 // 保存还款计划
                 repaymentPlanRepository.save(repaymentPlan);
-            }
         } catch (Exception e) {
             e.printStackTrace();
             // 记录日志但不抛出异常，避免影响审批流程
         }
     }
+    
     
     /**
      * 获取审批历史
@@ -518,15 +620,15 @@ public class LoanController {
      * 返回: 审批历史列表
      */
     @GetMapping("/approvals")
-    public Result<List<Map<String, Object>>> getApprovalHistory(@RequestParam Integer applicationId) {
+    public Result<List<Map<String, Object>>> getApprovalHistory(@RequestParam Integer userId) {
         try {
             // 验证必填参数
-            if (applicationId == null) {
-                return Result.error(400, "缺少必填参数applicationId");
+            if (userId == null) {
+                return Result.error(400, "缺少必填参数userId");
             }
-            
+            Integer approverId = userRepository.findByUserId(userId).get().getApproverId();
             // 查询审批记录
-            List<ApprovalRecord> approvalRecords = approvalRecordRepository.findByApplicationId(applicationId);
+            List<ApprovalRecord> approvalRecords = approvalRecordRepository.findByApproverId(approverId);
             
             // 构建响应数据
             List<Map<String, Object>> resultList = new ArrayList<>();
@@ -556,46 +658,60 @@ public class LoanController {
     
     /**
      * 获取还款计划
-     * @param applicationId 贷款申请ID
+     * @param userId 贷款申请用户ID
      * @return 还款计划列表响应
      */
     @GetMapping("/repayment-plan")
-    public Result<List<Map<String, Object>>> getRepaymentPlan(@RequestParam Integer applicationId) {
+    public Result<List<Map<String, Object>>> getRepaymentPlan(@RequestParam Integer userId) {
         try {
             // 验证参数
-            if (applicationId == null || applicationId <= 0) {
-                return Result.error(400, "无效的申请ID");
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "无效的用户ID");
             }
             
-            // 查询还款计划
-            List<RepaymentPlan> repaymentPlans = repaymentPlanRepository.findByApplicationId(applicationId);
+            // 通过userId查找所有贷款申请
+            List<LoanApplication> applications = loanApplicationRepository.findByUserId(userId);
             
-            // 检查并更新逾期状态
-            checkAndUpdateOverdueStatus(applicationId, repaymentPlans);
-            
-            // 重新查询更新后的还款计划
-            repaymentPlans = repaymentPlanRepository.findByApplicationId(applicationId);
+            if (applications == null || applications.isEmpty()) {
+                return Result.error(404, "未找到该用户的贷款申请记录");
+            }
             
             // 转换为需要的格式
             List<Map<String, Object>> resultList = new ArrayList<>();
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
             
-            for (RepaymentPlan plan : repaymentPlans) {
-                Map<String, Object> planMap = new HashMap<>();
-                planMap.put("dueDate", dateFormat.format(plan.getDueDate()));
-                planMap.put("RemainingAmout", plan.getRemainingAmount());
-                // 根据剩余金额设置状态，符合新的六种贷款状态规范
-                if (plan.getRemainingAmount() > 0) {
-                    // 检查是否逾期（状态码6）
-                    if (plan.getDueDate().before(new Date())) {
-                        planMap.put("status", "已逾期"); // 对应状态码6：已逾期
+            // 遍历所有贷款申请
+            for (LoanApplication application : applications) {
+                Integer applicationId = application.getApplicationId();
+                
+                // 查询该贷款申请的还款计划
+                List<RepaymentPlan> repaymentPlans = repaymentPlanRepository.findByApplicationId(applicationId);
+                
+                // 检查并更新逾期状态
+                checkAndUpdateOverdueStatus(applicationId, repaymentPlans);
+                
+                // 重新查询更新后的还款计划
+                repaymentPlans = repaymentPlanRepository.findByApplicationId(applicationId);
+                
+                // 处理每个还款计划
+                for (RepaymentPlan plan : repaymentPlans) {
+                    Map<String, Object> planMap = new HashMap<>();
+                    planMap.put("applicationId", applicationId); // 添加申请ID以便区分不同申请的还款计划
+                    planMap.put("dueDate", dateFormat.format(plan.getDueDate()));
+                    planMap.put("RemainingAmout", plan.getRemainingAmount());
+                    // 根据剩余金额设置状态，符合新的六种贷款状态规范
+                    if (plan.getRemainingAmount() > 0) {
+                        // 检查是否逾期（状态码6）
+                        if (plan.getDueDate().before(new Date())) {
+                            planMap.put("status", "已逾期"); // 对应状态码6：已逾期
+                        } else {
+                            planMap.put("status", "未还清"); // 对应状态码4：未还清
+                        }
                     } else {
-                        planMap.put("status", "未还清"); // 对应状态码4：未还清
+                        planMap.put("status", "已还款"); // 对应状态码5：已还款
                     }
-                } else {
-                    planMap.put("status", "已还款"); // 对应状态码5：已还款
+                    resultList.add(planMap);
                 }
-                resultList.add(planMap);
             }
             
             return Result.success(200, "成功", resultList);
@@ -609,14 +725,17 @@ public class LoanController {
      * 提交还款记录
      */
     @PostMapping("/repay")
-    public Result repayLoan(@RequestParam Integer applicationId,
-                           @RequestParam Float amount,
-                           @RequestParam @DateTimeFormat(pattern = "yyyy-MM-dd") Date payDate) {
+    public Result<?> repayLoan(@RequestBody Map<String, Object> requestBody) {
         try {
             // 验证参数
-            if (applicationId == null || amount == null || payDate == null || amount <= 0) {
+            if (!requestBody.containsKey("applicationId") ||
+                !requestBody.containsKey("amount") ||
+                !requestBody.containsKey("payDate")) {
                 return Result.error(400, "参数错误");
             }
+            Integer applicationId = Integer.parseInt(requestBody.get("applicationId").toString());
+            Float amount = Float.parseFloat(requestBody.get("amount").toString());
+            Date payDate = new SimpleDateFormat("yyyy-MM-dd").parse(requestBody.get("payDate").toString());    
 
             // 获取还款计划
             List<RepaymentPlan> repaymentPlans = repaymentPlanRepository.findByApplicationId(applicationId);
@@ -629,7 +748,7 @@ public class LoanController {
                     .mapToDouble(RepaymentPlan::getRemainingAmount)
                     .sum();
             
-            Float remainingAmount = amount;
+            double remainingAmount = amount;
             
             // 如果还款金额大于等于总剩余还款金额，将所有未还清的还款计划置为0
             if (amount >= totalRemainingToPay) {
@@ -641,7 +760,7 @@ public class LoanController {
                         repaymentPlanRepository.save(plan);
                     }
                 }
-                remainingAmount = 0f; // 全部还清，无剩余金额
+                remainingAmount = 0; // 全部还清，无剩余金额
             } else {
                 // 否则按原有逻辑处理部分还款
                 // 遍历还款计划，更新剩余金额
@@ -744,7 +863,7 @@ public class LoanController {
      * 查看还款历史
      */
     @GetMapping("/repayments")
-    public Result getRepaymentHistory(@RequestParam Integer userId) {
+    public Result<?> getRepaymentHistory(@RequestParam Integer userId) {
         try {
             // 验证参数
             if (userId == null || userId <= 0) {
@@ -869,7 +988,7 @@ public class LoanController {
     
     // 3. 修改贷款状态
     @PutMapping("/status/{id}")
-    public Result updateLoanStatus(@PathVariable Integer id, @RequestBody Map<String, Object> requestBody) {
+    public Result<?> updateLoanStatus(@PathVariable Integer id, @RequestBody Map<String, Object> requestBody) {
         try {
             // 查询状态是否存在
             Optional<LoanStatus> optionalStatus = loanStatusRepository.findById(id);
@@ -900,7 +1019,7 @@ public class LoanController {
     
     // 4. 删除贷款状态
     @DeleteMapping("/status/{id}")
-    public Result deleteLoanStatus(@PathVariable Integer id) {
+    public Result<?> deleteLoanStatus(@PathVariable Integer id) {
         try {
             // 查询状态是否存在
             if (!loanStatusRepository.existsById(id)) {
@@ -914,6 +1033,42 @@ public class LoanController {
         } catch (Exception e) {
             e.printStackTrace();
             return Result.error(500, "删除贷款状态失败：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 搜索产品接口
+     * 接口: /api/loan/searchproduct
+     * 请求方式: POST
+     * 请求参数: q(产品名字)
+     * 返回: 符合搜索条件的产品列表
+     */
+    @PostMapping("/searchproduct")
+    public Result<?> searchProduct(@RequestBody Map<String, Object> requestBody) {
+        try {
+            // 验证参数
+            if (!requestBody.containsKey("q") || requestBody.get("q") == null || requestBody.get("q").toString().trim().isEmpty()) {
+                return Result.error(400, "搜索关键词不能为空");
+            }
+            
+            // 获取所有产品，然后进行名称过滤（模糊匹配）
+            List<FinancialProduct> allProducts = financialProductRepository.findAll();
+            List<FinancialProduct> matchedProducts = new ArrayList<>();
+            
+            // 获取搜索关键词
+            String searchKeyword = requestBody.get("q").toString().toLowerCase().trim();
+            for (FinancialProduct product : allProducts) {
+                // 模糊匹配产品名称
+                if (product.getFpName().toLowerCase().contains(searchKeyword)) {
+                    matchedProducts.add(product);
+                }
+            }
+            
+            // 返回成功响应，包含匹配的产品列表
+            return Result.success(200, "成功", matchedProducts);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Result.error(500, "搜索产品失败：" + e.getMessage());
         }
     }
 }

@@ -16,8 +16,8 @@ public class LoanApplication {
     @Column(name = "userId", nullable = false)
     private Integer userId;
     
-    @Column(name = "productId", nullable = false)
-    private Integer productId;
+    @Column(name = "fpId", nullable = false)
+    private Integer fpId;
     
     @Column(name = "amount", nullable = false)
     private Integer amount;
@@ -36,7 +36,7 @@ public class LoanApplication {
     
     // 关联到金融产品
     @ManyToOne
-    @JoinColumn(name = "productId", referencedColumnName = "fpId", insertable = false, updatable = false)
+    @JoinColumn(name = "fpId", referencedColumnName = "fpId", insertable = false, updatable = false)
     private FinancialProduct financialProduct;
     
     // 关联到用户表，通过userId外键关联

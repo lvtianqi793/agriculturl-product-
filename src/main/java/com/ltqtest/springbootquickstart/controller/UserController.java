@@ -29,6 +29,13 @@ import java.util.logging.Logger;
 import org.springframework.dao.DataAccessException;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.io.IOException;
+import java.io.File;
+import java.util.Base64;
 
 
 @RestController
@@ -78,13 +85,93 @@ public class UserController {
     }
     
     /**
+     * 获取用户头像图片数据
+     * 接口路径: GET /api/user/avatar
+     * @param userId 用户ID
+     * @return ResponseEntity<byte[]> 包含图片数据的响应
+     */
+    @GetMapping("/user/avatar")
+    public ResponseEntity<byte[]> getUserAvatar(@RequestParam("userId") Integer userId) {
+        try {
+            // 验证参数
+            if (userId == null || userId <= 0) {
+                return ResponseEntity.badRequest().body(null);
+            }
+            
+            // 根据userId查询用户
+            User user = userRepository.findByUserId(userId).orElse(null);
+            if (user == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // 获取用户头像URL
+            String imageUrl = user.getImageUrl();
+            if (imageUrl == null || imageUrl.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // 从URL中提取文件路径
+            String fileName;
+            if (imageUrl.startsWith(accessBaseUrl)) {
+                // 如果是完整URL，提取文件名部分
+                fileName = imageUrl.substring(imageUrl.lastIndexOf("/") + 1);
+            } else if (imageUrl.startsWith(avatarPath)) {
+                // 如果已经包含avatarPath，提取文件名部分
+                fileName = imageUrl.substring(imageUrl.lastIndexOf("/") + 1);
+            } else {
+                // 如果只是文件名，直接使用
+                fileName = imageUrl;
+            }
+            
+            // 构建文件完整路径
+            String filePath = uploadBasePath + avatarPath + userId + "/" + fileName;
+            File imageFile = new File(filePath);
+            
+            // 检查文件是否存在
+            if (!imageFile.exists() || !imageFile.isFile()) {
+                logger.warning("用户ID为" + userId + "的头像文件不存在: " + filePath);
+                return ResponseEntity.notFound().build();
+            }
+            
+            // 读取文件内容
+            byte[] imageData = Files.readAllBytes(Paths.get(filePath));
+            
+            // 根据文件扩展名确定content-type
+            String extension = StringUtils.getFilenameExtension(fileName);
+            MediaType mediaType;
+            if ("png".equalsIgnoreCase(extension)) {
+                mediaType = MediaType.IMAGE_PNG;
+            } else if ("gif".equalsIgnoreCase(extension)) {
+                mediaType = MediaType.IMAGE_GIF;
+            } else {
+                // 默认使用JPEG
+                mediaType = MediaType.IMAGE_JPEG;
+            }
+            
+            logger.info("成功返回用户ID为" + userId + "的头像图片");
+            return ResponseEntity.ok()
+                    .contentType(mediaType)
+                    .body(imageData);
+                    
+        } catch (IOException e) {
+            logger.severe("读取用户ID为" + userId + "的头像文件时出错: " + e.getMessage());
+            return ResponseEntity.status(500).body(null);
+        } catch (Exception e) {
+            logger.severe("处理用户ID为" + userId + "的头像请求时发生未预期错误: " + e.getMessage());
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+    
+    /**
      * 获取用户个人信息接口
      * 接口路径: GET /api/user/profile
      * @param userId 用户ID
+     * @param imageReturnFormat 头像返回格式，可选值：url（默认）、base64
      * @return Result 包含用户个人信息的结果对象
      */
     @GetMapping("/user/profile")
-    public Result<Map<String, Object>> getUser(@RequestParam("userId") Integer userId) {
+    public Result<Map<String, Object>> getUser(@RequestParam("userId") Integer userId,
+                                             @RequestParam(value = "imageReturnFormat", defaultValue = "url") String imageReturnFormat) {
         try {
             // 验证参数
             if(userId == null || userId <= 0) {
@@ -105,14 +192,109 @@ public class UserController {
             userData.put("role_type", user.getRoleType());
             userData.put("phone", user.getPhone());
             userData.put("email", user.getEmail());
-            userData.put("image_url", "https://example.com/avatar.jpg"); // 添加默认头像URL
+            
+            // 获取用户头像URL
+            String imageUrl = user.getImageUrl();
+            
+            // 根据返回格式参数决定返回URL还是Base64
+            if (imageUrl != null && !imageUrl.isEmpty()) {
+                if ("base64".equalsIgnoreCase(imageReturnFormat)) {
+                    // 返回Base64编码的图片数据
+                    String base64Image = convertImageToBase64(userId, imageUrl);
+                    if (base64Image != null) {
+                        userData.put("image_data", base64Image);
+                        userData.put("image_type", "base64");
+                    } else {
+                        userData.put("image_data", "");
+                        userData.put("image_type", "base64");
+                        logger.warning("用户ID为" + userId + "的头像无法转换为Base64格式");
+                    }
+                } else {
+                    // 默认返回URL（保持向后兼容）
+                    // 确保URL以accessBaseUrl开头，这样前端可以正确解析
+                    if (!imageUrl.startsWith(accessBaseUrl)) {
+                        // 如果URL不完整，构建完整的URL路径
+                        // 检查是否已经包含avatarPath前缀
+                        if (imageUrl.startsWith(avatarPath)) {
+                            imageUrl = accessBaseUrl + imageUrl;
+                        } else {
+                            // 直接使用完整路径
+                            imageUrl = accessBaseUrl + avatarPath + userId + "/" + imageUrl;
+                        }
+                    }
+                    userData.put("image_url", imageUrl);
+                }
+            } else {
+                if ("base64".equalsIgnoreCase(imageReturnFormat)) {
+                    userData.put("image_data", "");
+                    userData.put("image_type", "base64");
+                } else {
+                    userData.put("image_url", imageUrl);
+                }
+            }
+            
             userData.put("expert_id", user.getExpertId() != null ? user.getExpertId() : 0);
             userData.put("approver_id", user.getApproverId() != null ? user.getApproverId() : 0);
             userData.put("create_time", user.getCreateTime());
             return Result.success(200, "成功", userData);
             
         } catch (Exception e) {
+            logger.severe("获取用户信息失败: " + e.getMessage());
             return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 将图片文件转换为Base64编码字符串
+     * @param userId 用户ID
+     * @param imageUrl 图片URL
+     * @return Base64编码的图片字符串，如果转换失败返回null
+     */
+    
+    private String convertImageToBase64(Integer userId, String imageUrl) {
+        try {
+            // 从URL中提取文件路径
+            String fileName;
+            if (imageUrl.startsWith(accessBaseUrl)) {
+                fileName = imageUrl.substring(imageUrl.lastIndexOf("/") + 1);
+            } else if (imageUrl.startsWith(avatarPath)) {
+                fileName = imageUrl.substring(imageUrl.lastIndexOf("/") + 1);
+            } else {
+                fileName = imageUrl;
+            }
+            
+            // 构建文件完整路径
+            String filePath = uploadBasePath + avatarPath + userId + "/" + fileName;
+            File imageFile = new File(filePath);
+            
+            // 检查文件是否存在
+            if (!imageFile.exists() || !imageFile.isFile()) {
+                logger.warning("用户ID为" + userId + "的头像文件不存在: " + filePath);
+                return null;
+            }
+            
+            // 读取文件内容并转换为Base64
+            byte[] imageData = Files.readAllBytes(Paths.get(filePath));
+            String base64 = java.util.Base64.getEncoder().encodeToString(imageData);
+            
+            // 根据文件扩展名确定MIME类型
+            String extension = StringUtils.getFilenameExtension(fileName);
+            String mimeType;
+            if ("png".equalsIgnoreCase(extension)) {
+                mimeType = "image/png";
+            } else if ("gif".equalsIgnoreCase(extension)) {
+                mimeType = "image/gif";
+            } else {
+                // 默认使用JPEG
+                mimeType = "image/jpeg";
+            }
+            
+            // 返回带MIME类型的Base64字符串
+            return "data:" + mimeType + ";base64," + base64;
+            
+        } catch (Exception e) {
+            logger.severe("用户ID为" + userId + "的头像转换为Base64时出错: " + e.getMessage());
+            return null;
         }
     }
     
@@ -124,7 +306,6 @@ public class UserController {
      * @param realName 真实姓名
      * @param phone 手机号
      * @param email 邮箱
-     * @param imageUrl 头像URL
      * @return Result 更新结果对象
      */
     @PutMapping("/user/profile/update")
@@ -132,8 +313,7 @@ public class UserController {
             @RequestParam("userId") Integer userId,
             @RequestParam(value = "real_name", required = false) String realName,
             @RequestParam(value = "phone", required = false) String phone,
-            @RequestParam(value = "email", required = false) String email,
-            @RequestParam(value = "image_url", required = false) String imageUrl) {
+            @RequestParam(value = "email", required = false) String email) {
         try {
             // 参数验证
             if (userId == null || userId <= 0) {
@@ -160,10 +340,6 @@ public class UserController {
             if (email != null && !email.isEmpty()) {
                 user.setEmail(email);
             }
-            if (imageUrl != null && !imageUrl.isEmpty()) {
-                user.setImageUrl(imageUrl);
-            }
-        
             // 5. 保存更新到数据库
             User updatedUser = userRepository.save(user);
             
@@ -173,8 +349,6 @@ public class UserController {
             resultMap.put("realName", updatedUser.getRealName());
             resultMap.put("phone", updatedUser.getPhone());
             resultMap.put("email", updatedUser.getEmail());
-            resultMap.put("imageUrl", updatedUser.getImageUrl());
-            
             return Result.success(200, "更新成功", resultMap);
         } catch (IllegalArgumentException e) {
             // 参数无效异常

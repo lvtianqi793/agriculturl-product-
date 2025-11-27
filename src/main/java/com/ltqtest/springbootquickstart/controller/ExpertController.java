@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @RestController
@@ -75,27 +76,27 @@ public class ExpertController {
             }
             
             // 验证必填参数 - 同时支持下划线和驼峰命名格式
-            if ((!request.containsKey("expertName") && !request.containsKey("expert_name")) || 
-                (request.containsKey("expertName") ? request.get("expertName") == null : request.get("expert_name") == null)) {
-                return Result.error(400, "参数错误：专家名称不能为空");
+            if (!request.containsKey("expertId") || request.get("expertId") == null) {
+                return Result.error(400, "参数错误：专家ID不能为空");
             }
-            if ((!request.containsKey("user_id") && !request.containsKey("userId")) || 
-                (request.containsKey("user_id") ? request.get("user_id") == null : request.get("userId") == null)) {
+            if ((!request.containsKey("userId"))) {
                 return Result.error(400, "参数错误：用户ID不能为空");
             }
             if (!request.containsKey("date") || request.get("date") == null) {
                 return Result.error(400, "参数错误：预约日期不能为空");
             }
-            if (!request.containsKey("time") || request.get("time") == null) {
-                return Result.error(400, "参数错误：预约时间不能为空");
+            if (!request.containsKey("startTime") || request.get("startTime") == null) {
+                return Result.error(400, "参数错误：开始时间不能为空");
+            }
+            if (!request.containsKey("endTime") || request.get("endTime") == null) {
+                return Result.error(400, "参数错误：结束时间不能为空");
             }
             
             // 解析参数 - 同时支持下划线和驼峰命名格式
-            String expertName;
+           
             Integer userId;
             try {
                 // 优先使用驼峰格式，如果不存在则使用下划线格式
-                expertName = request.containsKey("expertName") ? request.get("expertName").toString() : request.get("expert_name").toString();
                 String userIdStr = request.containsKey("user_id") ? request.get("user_id").toString() : request.get("userId").toString();
                 userId = Integer.parseInt(userIdStr);
             } catch (NumberFormatException e) {
@@ -103,9 +104,11 @@ public class ExpertController {
             }
             
             String dateStr = request.get("date").toString();
-            String time = request.get("time").toString();
+            String startTimeStr = request.get("startTime").toString();
+            String endTimeStr = request.get("endTime").toString();
             String topic = request.containsKey("topic") ? request.get("topic").toString() : null;
             String remark = request.containsKey("remark") ? request.get("remark").toString() : null;
+            Integer expertId = Integer.parseInt(request.get("expertId").toString());
             
             // 验证日期格式
             java.time.LocalDate date;
@@ -114,7 +117,11 @@ public class ExpertController {
             } catch (Exception e) {
                 return Result.error(400, "参数错误：日期格式不正确，请使用YYYY-MM-DD格式");
             }
-            
+            Expert expert = expertRepository.findByExpertId(expertId).orElse(null);
+            if(expert == null){
+                return Result.error(400, "参数错误：专家ID不存在");
+            }
+        
             // 验证预约时间是否大于当前时间
             java.time.LocalDate currentDate = java.time.LocalDate.now();
             java.time.LocalTime currentTime = java.time.LocalTime.now();
@@ -124,30 +131,55 @@ public class ExpertController {
                 return Result.error(400, "参数错误：预约日期不能早于当前日期");
             }
             
-            // 如果预约日期等于当前日期，则需要比较时间
-            if (date.isEqual(currentDate)) {
-                try {
-                    // 假设时间格式为"HH:mm"，如"14:30"
-                    java.time.LocalTime appointmentTime = java.time.LocalTime.parse(time);
-                    if (appointmentTime.isBefore(currentTime)) {
-                        return Result.error(400, "参数错误：预约时间不能早于当前时间");
+            // 解析开始时间和结束时间
+            java.time.LocalTime startTime;
+            java.time.LocalTime endTime;
+            try {
+                // 假设时间格式为"HH:mm"，如"14:30"
+                startTime = java.time.LocalTime.parse(startTimeStr);
+                endTime = java.time.LocalTime.parse(endTimeStr);
+                
+                // 验证结束时间必须大于开始时间
+                if (!endTime.isAfter(startTime)) {
+                    return Result.error(400, "参数错误：结束时间必须大于开始时间");
+                }
+                
+                // 如果预约日期等于当前日期，则需要比较开始时间
+                if (date.isEqual(currentDate)) {
+                    if (startTime.isBefore(currentTime)) {
+                        return Result.error(400, "参数错误：开始时间不能早于当前时间");
                     }
-                } catch (Exception e) {
-                    return Result.error(400, "参数错误：时间格式不正确，请使用HH:mm格式");
+                }
+            } catch (Exception e) {
+                return Result.error(400, "参数错误：时间格式不正确，请使用HH:mm格式");
+            }
+            // 检查是否存在时间冲突的预约
+            // 查找相同专家、相同日期，并且时间范围有重叠的预约记录
+            List<ExpertAppointment> existingAppointments = expertAppointmentRepository.findByExpertIdAndDate(expertId, date);
+            boolean hasConflict = false;
+            
+            for (ExpertAppointment existing : existingAppointments) {
+                // 检查是否存在时间重叠：新预约不是完全在现有预约之前，也不是完全在现有预约之后
+                boolean isCompletelyBefore = endTime.isBefore(existing.getStartTime()) || endTime.equals(existing.getStartTime());
+                boolean isCompletelyAfter = startTime.isAfter(existing.getEndTime()) || startTime.equals(existing.getEndTime());
+                
+                if (isCompletelyBefore||isCompletelyAfter) {
+                    hasConflict = true;
+                    break;
                 }
             }
             
-            // 根据专家名称查询专家
-            Expert expert = expertRepository.findByExpertName(expertName)
-                .orElseThrow(() -> new RuntimeException("专家不存在"));
-            Integer expertId = expert.getExpertId();
+            if (hasConflict) {
+                return Result.error(409, "该专家在该时间段已被预约，请选择其他时间");
+            }
             
             // 创建预约记录
             ExpertAppointment appointment = new ExpertAppointment();
             appointment.setExpertId(expertId);
             appointment.setUserId(userId);
             appointment.setDate(date);
-            appointment.setTime(time);
+            appointment.setStartTime(startTime);
+            appointment.setEndTime(endTime);
             appointment.setTopic(topic);
             appointment.setRemark(remark);
             
@@ -156,19 +188,12 @@ public class ExpertController {
             
             // 构建响应数据
             Map<String, Object> responseData = new HashMap<>();
-            responseData.put("appointment_id", savedAppointment.getAppointmentId());
+            responseData.put("appointmentId", savedAppointment.getAppointmentId());
             responseData.put("status", "pending");
             
             return Result.success(200, "预约申请已提交，等待专家确认", responseData);
             
         } catch (RuntimeException e) {
-            if (e.getMessage().contains("专家不存在")) {
-                return Result.error(404, e.getMessage());
-            }
-            // 检查是否是唯一索引冲突（同一专家在同一时间段被重复预约）
-            if (e.getMessage() != null && e.getMessage().contains("uk_expert_date_time")) {
-                return Result.error(409, "该专家在该时间段已被预约，请选择其他时间");
-            }
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }
     }
@@ -256,7 +281,7 @@ public class ExpertController {
      * 接口路径: GET /api/expert-appointment/user/list
      */
     @GetMapping("/expert-appointment/user/list")
-    public Result<List<Map<String, Object>>> getUserAppointments(@RequestParam("user_id") Integer userId) {
+    public Result<List<Map<String, Object>>> getUserAppointments(@RequestParam("userId") Integer userId) {
         try {
             // 参数校验
             if (userId == null || userId <= 0) {
@@ -274,7 +299,8 @@ public class ExpertController {
                 // 添加预约基本信息
                 appointmentMap.put("id", appointment.getAppointmentId());
                 appointmentMap.put("date", appointment.getDate().toString());
-                appointmentMap.put("time", appointment.getTime());
+                appointmentMap.put("startTime", appointment.getStartTime().toString());
+                appointmentMap.put("endTime", appointment.getEndTime().toString());
                 appointmentMap.put("topic", appointment.getTopic());
                 appointmentMap.put("status", appointment.getStatus());
                 
@@ -309,45 +335,13 @@ public class ExpertController {
             if (request == null) {
                 return Result.error(400, "请求参数不能为空");
             }
-            
-            // 验证必填参数 - 同时支持下划线和驼峰命名格式
-            if ((!request.containsKey("expertName") && !request.containsKey("expert_name")) || 
-                (request.containsKey("expertName") ? request.get("expertName") == null : request.get("expert_name") == null)) {
-                return Result.error(400, "参数错误：专家名称不能为空");
+            if(!request.containsKey("appointmentId")){
+                return Result.error(400, "参数错误：预约ID不能为空");
             }
-            if ((!request.containsKey("user_id") && !request.containsKey("userId")) || 
-                (request.containsKey("user_id") ? request.get("user_id") == null : request.get("userId") == null)) {
-                return Result.error(400, "参数错误：用户ID不能为空");
-            }
-            if (!request.containsKey("date") || request.get("date") == null) {
-                return Result.error(400, "参数错误：预约日期不能为空");
-            }
-            if (!request.containsKey("time") || request.get("time") == null) {
-                return Result.error(400, "参数错误：预约时间不能为空");
-            }
-            
             // 解析参数
-            String expertName = request.containsKey("expertName") ? request.get("expertName").toString() : request.get("expert_name").toString();
-            Integer userId;
-            LocalDate date;
-            String time = request.get("time").toString();
-            
-            try {
-                userId = Integer.parseInt(request.containsKey("user_id") ? request.get("user_id").toString() : request.get("userId").toString());
-                date = LocalDate.parse(request.get("date").toString());
-            } catch (NumberFormatException e) {
-                return Result.error(400, "参数错误：用户ID格式不正确");
-            } catch (Exception e) {
-                return Result.error(400, "参数错误：日期格式不正确，请使用YYYY-MM-DD格式");
-            }
-            
-            // 查询专家
-            Expert expert = expertRepository.findByExpertName(expertName)
-                    .orElseThrow(() -> new RuntimeException("专家不存在"));
-            Integer expertId = expert.getExpertId();
-            
+            Long appointmentId = Long.parseLong(request.get("appointmentId").toString());
             // 查询预约记录
-            ExpertAppointment appointment = expertAppointmentRepository.findByExpertIdAndUserIdAndDateAndTime(expertId, userId, date, time)
+            ExpertAppointment appointment = expertAppointmentRepository.findByAppointmentId(appointmentId)
                     .orElseThrow(() -> new RuntimeException("预约记录不存在"));
             
             // 检查预约是否可以取消（未开始的预约）
@@ -391,16 +385,16 @@ public class ExpertController {
      */
     @GetMapping("/expert-appointment/pending")
     public Result<List<Map<String, Object>>> getPendingAppointments(
-            @RequestParam(required = false) Integer user_id,
+            @RequestParam(required = false) Integer userId,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "10") Integer size) {
         try {
             // 参数校验 - 先进行用户ID校验
-            if (user_id == null || user_id <= 0) {
+            if (userId == null || userId <= 0) {
                 return Result.error(400, "参数错误：用户ID无效");
             }
             
-            User user1 = userRepository.findByUserId(user_id).orElse(null);
+            User user1 = userRepository.findByUserId(userId).orElse(null);
             // 检查用户是否存在
             if (user1 == null) {
                 return Result.error(404, "用户不存在");
@@ -437,7 +431,8 @@ public class ExpertController {
                 // 添加预约基本信息
                 appointmentMap.put("id", appointment.getAppointmentId());
                 appointmentMap.put("date", appointment.getDate().toString());
-                appointmentMap.put("time", appointment.getTime());
+                appointmentMap.put("startTime", appointment.getStartTime().toString());
+                appointmentMap.put("endTime", appointment.getEndTime().toString());
                 appointmentMap.put("topic", appointment.getTopic());
                 appointmentMap.put("remark", appointment.getRemark());
                 appointmentMap.put("status", appointment.getStatus());
@@ -477,16 +472,17 @@ public class ExpertController {
     @PostMapping("/expert-appointment/review")
     public Result<Map<String, Object>> reviewAppointment(@RequestBody Map<String, Object> request) {
         try {
+            
             // 参数校验
             if (request == null) {
                 return Result.error(400, "请求参数不能为空");
             }
             
             // 验证必填参数
-            if (!request.containsKey("appointment_id") || request.get("appointment_id") == null) {
+            if (!request.containsKey("appointmentId") || request.get("appointmentId") == null) {
                 return Result.error(400, "参数错误：预约ID不能为空");
             }
-            if (!request.containsKey("user_id") || request.get("user_id") == null) {
+            if (!request.containsKey("userId") || request.get("userId") == null) {
                 return Result.error(400, "参数错误：用户ID不能为空");
             }
             if (!request.containsKey("action") || request.get("action") == null) {
@@ -496,7 +492,7 @@ public class ExpertController {
             // 解析用户ID并查询用户
             Integer userId;
             try {
-                userId = Integer.parseInt(request.get("user_id").toString());
+                userId = Integer.parseInt(request.get("userId").toString());
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：用户ID格式不正确");
             }
@@ -517,7 +513,7 @@ public class ExpertController {
             Integer expertId;
             Integer action;
             try {
-                appointmentId = Long.parseLong(request.get("appointment_id").toString());
+                appointmentId = Long.parseLong(request.get("appointmentId").toString());
                 expertId = user.getExpertId();
                 
                 // 处理action参数，支持字符串和数字
@@ -586,7 +582,7 @@ public class ExpertController {
             
             // 构建响应数据
             Map<String, Object> responseData = new HashMap<>();
-            responseData.put("appointment_id", appointment.getAppointmentId());
+            responseData.put("appointmentId", appointment.getAppointmentId());
             responseData.put("status", appointment.getStatus());
             
             return Result.success(200, "预约已审批", responseData);
@@ -612,26 +608,21 @@ public class ExpertController {
             if (request == null) {
                 return Result.error(400, "请求参数不能为空");
             }
-            
             // 验证必填参数
-            if (!request.containsKey("appointment_id") || request.get("appointment_id") == null) {
+            if (!request.containsKey("appointmentId") || request.get("appointmentId") == null) {
                 return Result.error(400, "参数错误：预约ID不能为空");
-            }
-            if (!request.containsKey("user_id") || request.get("user_id") == null) {
-                return Result.error(400, "参数错误：用户ID不能为空");
             }
             if (!request.containsKey("status") || request.get("status") == null) {
                 return Result.error(400, "参数错误：状态不能为空");
             }
-            if (!request.containsKey("meetTime") || request.get("meetTime") == null) {
+            if (!request.containsKey("meetTime") ) {
                 return Result.error(400, "参数错误：时间不能为空");
             }
             
             // 解析参数
             Long appointmentId;
-            Integer expertId=userRepository.findByUserId(Integer.parseInt(request.get("user_id").toString())).orElse(null).getExpertId();
             try {
-                appointmentId = Long.parseLong(request.get("appointment_id").toString());
+                appointmentId = Long.parseLong(request.get("appointmentId").toString());
                 
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：预约ID或专家ID格式不正确");
@@ -643,35 +634,31 @@ public class ExpertController {
             // 验证和解析meetTime参数
             LocalDateTime meetTime;
             try {
-                meetTime = LocalDateTime.parse(request.get("meetTime").toString());
+                String meetTimeStr = request.get("meetTime").toString();
+                // 使用DateTimeFormatter来解析前端发送的时间格式(yyyy-MM-dd HH:mm)
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+                // 如果时间字符串不包含秒，添加:00作为秒
+                if (meetTimeStr.length() <= 16) { // 格式为 yyyy-MM-dd HH:mm
+                    meetTimeStr += ":00";
+                    formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                }
+                meetTime = LocalDateTime.parse(meetTimeStr, formatter);
                 
                 // 检查meetTime是否小于当前时间
                 if (LocalDateTime.now().isBefore(meetTime)) {
                     return Result.error(400, "参数错误：当前时间小于预约时间，不能更新状态");
                 }
             } catch (Exception e) {
-                return Result.error(400, "参数错误：时间格式不正确，请使用标准时间格式");
+                return Result.error(400, "参数错误：时间格式不正确，请使用yyyy-MM-dd HH:mm格式");
             }
             
             // 验证status值是否有效
             if (!"completed".equals(status) && !"no_show".equals(status)) {
                 return Result.error(400, "参数错误：状态值无效，应为completed或no_show");
             }
-            
-            // 验证专家是否存在
-            if (!expertRepository.existsById(expertId)) {
-                return Result.error(404, "专家不存在");
-            }
-            
             // 查询预约记录
             ExpertAppointment appointment = expertAppointmentRepository.findById(appointmentId)
                     .orElseThrow(() -> new RuntimeException("预约记录不存在"));
-            
-            // 验证预约是否属于该专家
-            if (!appointment.getExpertId().equals(expertId)) {
-                return Result.error(403, "无权更新该预约状态");
-            }
-            
             // 验证状态转换的合法性（只有approved状态才能转为completed或no_show）
             if (!"approved".equals(appointment.getStatus())) {
                 return Result.error(400, "只有已批准(approved)的预约才能更新为完成或未出席状态");
@@ -750,7 +737,8 @@ public class ExpertController {
                 // 添加预约基本信息
                 appointmentMap.put("id", appointment.getAppointmentId());
                 appointmentMap.put("date", appointment.getDate().toString());
-                appointmentMap.put("time", appointment.getTime());
+                appointmentMap.put("startTime", appointment.getStartTime().toString());
+                appointmentMap.put("endTime", appointment.getEndTime().toString());
                 appointmentMap.put("topic", appointment.getTopic());
                 appointmentMap.put("status", appointment.getStatus());
                 
@@ -760,7 +748,7 @@ public class ExpertController {
                 if (user != null) {
                     userName = user.getRealName() != null ? user.getRealName() : user.getUsername();
                 }
-                appointmentMap.put("user_name", userName);
+                appointmentMap.put("userName", userName);
                 
                 appointmentList.add(appointmentMap);
             }
