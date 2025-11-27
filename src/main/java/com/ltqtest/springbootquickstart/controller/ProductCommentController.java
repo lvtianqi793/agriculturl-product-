@@ -33,7 +33,8 @@ public class ProductCommentController {
      * 不需要记录用户ID，只需要增加对应的点赞次数
      */
     @PostMapping("comment/like")
-    public Result<Map<String, Long>> likeComment(Long productCommentId) {
+    public Result<Map<String, Long>> likeComment(@RequestBody Map<String, Object> request) {
+        Long productCommentId = Long.valueOf(request.get("productCommentId").toString());
         if (productCommentId == null) {
             return Result.error(400, "评论ID不能为空");
         }
@@ -59,6 +60,40 @@ public class ProductCommentController {
         response.put("data", data);
         return Result.success(200, "点赞成功", data);
     }
+
+     /**
+     * 取消点赞功能接口
+     * 不需要记录用户ID，只需要减少对应的点赞次数
+     */
+    @PostMapping("comment/dislike")
+    public Result<Map<String, Long>> dislikeComment(@RequestBody Map<String, Object> request) {
+        Long productCommentId = Long.valueOf(request.get("productCommentId").toString());
+        if (productCommentId == null) {
+            return Result.error(400, "评论ID不能为空");
+        }
+        
+        // 查找评论
+        Optional<ProductComment> commentOpt = productCommentRepository.findByProductCommentId(productCommentId);
+        if (!commentOpt.isPresent()) {
+            return Result.error(404, "评论不存在");
+        }
+        
+        // 增加点赞数
+        ProductComment comment = commentOpt.get();
+        Long currentLikeCount = comment.getCommentLikeCount();
+        comment.setCommentLikeCount(currentLikeCount != null ? currentLikeCount - 1 : 1);
+        productCommentRepository.save(comment);
+        
+        // 返回最新的点赞数
+        Map<String, Long> data = new HashMap<>();
+        data.put("commentLikeCount", comment.getCommentLikeCount());
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("code", 200);
+        response.put("data", data);
+        return Result.success(200, "点赞成功", data);
+    }
+
     /**
      * 删除评论功能接口
      * 1. 用户只能删除自己的评论
@@ -176,33 +211,34 @@ public class ProductCommentController {
         public String getContent() {
             return content;
         }
-        public void setContent(String content) {
-            this.content = content;
-        }
+
+    //    public void setContent(String content) {
+    //        this.content = content;
+    //    }
         public Integer getUserId() {
             return userId;
         }
-        public void setUserId(Integer userId) {
-            this.userId = userId;
-        }
+    //    public void setUserId(Integer userId) {
+    //        this.userId = userId;
+    //    }
         public Integer getProductId() {
             return productId;
         }
-        public void setProductId(Integer productId) {
-            this.productId = productId;
-        }
+    //    public void setProductId(Integer productId) {
+    //        this.productId = productId;
+    //    }
         public Long getRootCommentId() {
             return rootCommentId;
         }
-        public void setRootCommentId(Long rootCommentId) {
-            this.rootCommentId = rootCommentId;
-        }
+    //    public void setRootCommentId(Long rootCommentId) {
+    //        this.rootCommentId = rootCommentId;
+    //    }
         public Long getToCommentId() {
             return toCommentId;
         }
-        public void setToCommentId(Long toCommentId) {
-            this.toCommentId = toCommentId;
-        }
+    //    public void setToCommentId(Long toCommentId) {
+    //        this.toCommentId = toCommentId;
+    //    }
     }
     /**
      * 获取商品所有信息，包括评论

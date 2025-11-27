@@ -250,6 +250,7 @@ public class UserController {
      * @param imageUrl 图片URL
      * @return Base64编码的图片字符串，如果转换失败返回null
      */
+    
     private String convertImageToBase64(Integer userId, String imageUrl) {
         try {
             // 从URL中提取文件路径

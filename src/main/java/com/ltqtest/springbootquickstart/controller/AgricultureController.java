@@ -13,14 +13,22 @@ import com.ltqtest.springbootquickstart.repository.ShoppingCartRepository;
 import com.ltqtest.springbootquickstart.repository.UserRepository;
 import com.ltqtest.springbootquickstart.repository.UserAddressRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.logging.Logger;
+
 
 @RestController
 @RequestMapping("/api")
@@ -41,10 +49,45 @@ public class AgricultureController {
     @Autowired
     private UserAddressRepository userAddressRepository;
     
+    // 日志记录器
+    private static final Logger logger = Logger.getLogger(AgricultureController.class.getName());
+    
     // 基础上传路径
     private final String uploadBasePath = "uploads/";
     // 图片上传子路径
     private final String productImgPath = "product_images/";
+    // 访问基础URL
+    private final String accessBaseUrl = "/api/uploads/product_images/";
+    // 商品图片接口URL前缀
+    private final String productImageApiUrl = "/api/products/image/";
+    
+    /**
+     * 验证图片类型是否有效
+     * @param contentType 文件的Content-Type
+     * @return 是否为有效的图片类型
+     */
+    private boolean isValidImageType(String contentType) {
+        return contentType != null && (
+            contentType.equals("image/jpeg") ||
+            contentType.equals("image/png") ||
+            contentType.equals("image/gif")
+        );
+    }
+    
+    /**
+     * 根据Content-Type获取文件扩展名
+     * @param contentType 文件的Content-Type
+     * @return 文件扩展名
+     */
+    private String getExtensionByContentType(String contentType) {
+        if (contentType == null) return "jpg";
+        switch (contentType) {
+            case "image/jpeg": return "jpg";
+            case "image/png": return "png";
+            case "image/gif": return "gif";
+            default: return "jpg";
+        }
+    }
     
     /**
      * 将本地图片转化为可访问的URL
@@ -105,6 +148,130 @@ public class AgricultureController {
         String imageUrl = "/api/uploads/product_images/" + userId + "/" + newFilename;
         
         return imageUrl;
+    }
+    
+    /**
+     * 商品图片上传接口
+     * 接口路径: POST /api/products/upload-image
+     * @param file 上传的图片文件
+     * @param userId 用户ID
+     * @return 包含生成的图片URL的响应
+     */
+    @PostMapping("/products/upload-image")
+    public Result<Map<String, String>> uploadProductImage(@RequestParam("file") MultipartFile file, @RequestParam("userId") Integer userId) {
+        try {
+            // 参数验证
+            if (file == null || file.isEmpty()) {
+                return Result.error(400, "图片文件不能为空");
+            }
+            if (userId == null || userId <= 0) {
+                return Result.error(400, "用户ID无效");
+            }
+            
+            // 验证用户是否存在
+            Optional<User> userOptional = userRepository.findByUserId(userId);
+            if (!userOptional.isPresent()) {
+                return Result.error(404, "用户不存在");
+            }
+            
+            // 验证图片类型
+            String contentType = file.getContentType();
+            if (!isValidImageType(contentType)) {
+                return Result.error(400, "无效的图片类型，只支持jpg、png、gif格式");
+            }
+            
+            // 创建基于用户ID的目录
+            String userDirPath = uploadBasePath + productImgPath + userId + File.separator;
+            File userDir = new File(userDirPath);
+            if (!userDir.exists()) {
+                if (!userDir.mkdirs()) {
+                    return Result.error(500, "无法创建上传目录");
+                }
+            }
+            
+            // 生成唯一文件名
+            String extension = getExtensionByContentType(contentType);
+            String filename = "product_" + userId + "_" + UUID.randomUUID() + "." + extension;
+            String filePath = userDirPath + filename;
+            
+            // 保存文件
+            file.transferTo(new File(filePath));
+            
+            // 生成可访问的URL
+            String imageUrl = accessBaseUrl + userId + "/" + filename;
+            
+            // 返回结果
+            Map<String, String> responseData = new HashMap<>();
+            responseData.put("imageUrl", imageUrl);
+            responseData.put("filename", filename);
+            
+            return Result.success(200, "图片上传成功", responseData);
+        } catch (IOException e) {
+            return Result.error(500, "文件保存失败：" + e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "上传图片失败：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 获取商品图片接口
+     * 接口路径: GET /api/products/image/{userId}/{filename}
+     * @param userId 用户ID
+     * @param filename 文件名
+     * @return 图片数据
+     */
+    @GetMapping("/products/image/{userId}/{filename}")
+    public ResponseEntity<byte[]> getProductImage(@PathVariable("userId") Integer userId, @PathVariable("filename") String filename) {
+        try {
+            // 参数验证
+            if (userId == null || userId <= 0) {
+                return ResponseEntity.badRequest().body(null);
+            }
+            if (filename == null || filename.isEmpty()) {
+                return ResponseEntity.badRequest().body(null);
+            }
+            
+            // 构造文件路径
+            String filePath = uploadBasePath + productImgPath + userId + File.separator + filename;
+            File imageFile = new File(filePath);
+            
+            // 验证文件是否存在
+            if (!imageFile.exists() || !imageFile.isFile()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // 读取文件内容
+            byte[] imageData = Files.readAllBytes(imageFile.toPath());
+            
+            // 根据文件扩展名确定Content-Type
+            String extension = StringUtils.getFilenameExtension(filename).toLowerCase();
+            MediaType mediaType;
+            switch (extension) {
+                case "jpg":
+                case "jpeg":
+                    mediaType = MediaType.IMAGE_JPEG;
+                    break;
+                case "png":
+                    mediaType = MediaType.IMAGE_PNG;
+                    break;
+                case "gif":
+                    mediaType = MediaType.IMAGE_GIF;
+                    break;
+                default:
+                    mediaType = MediaType.APPLICATION_OCTET_STREAM;
+            }
+            
+            // 设置响应头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(mediaType);
+            headers.setContentLength(imageData.length);
+            
+            return new ResponseEntity<>(imageData, headers, HttpStatus.OK);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
     }
     
     /**
@@ -178,11 +345,37 @@ public class AgricultureController {
                     productMap.put("productId", product.getProductId());
                     productMap.put("productName", product.getProductName());
                     productMap.put("price", product.getPrice());
-                productMap.put("producer", product.getProducer());
-                productMap.put("salesVolume", product.getSalesVolume());
-                productMap.put("productImg", product.getProductImg());
-                productMap.put("surplus", product.getSurplus());
-                productList.add(productMap);
+                    productMap.put("producer", product.getProducer());
+                    productMap.put("salesVolume", product.getSalesVolume());
+                    
+                    // 处理商品图片URL，确保格式正确
+                    String productImg = product.getProductImg();
+                    productMap.put("productImg", productImg);
+                    
+                    // 如果有图片，添加直接访问接口的URL（用于直接获取图片数据）
+                    if (productImg != null && !productImg.isEmpty()) {
+                        // 尝试从现有URL中提取用户ID和文件名，构建直接访问接口的URL
+                        try {
+                            // 解析现有URL，提取用户ID和文件名
+                            if (productImg.startsWith(accessBaseUrl)) {
+                                String relativePath = productImg.substring(accessBaseUrl.length());
+                                if (relativePath.contains("/")) {
+                                    String[] parts = relativePath.split("/");
+                                    if (parts.length >= 2) {
+                                        String userId = parts[0];
+                                        String filename = parts[1];
+                                        String directImageUrl = productImageApiUrl + userId + "/" + filename;
+                                        productMap.put("directImageUrl", directImageUrl);
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            // 如果解析失败，忽略异常，不添加directImageUrl
+                        }
+                    }
+                    
+                    productMap.put("surplus", product.getSurplus());
+                    productList.add(productMap);
                     }
                 }
             
@@ -239,54 +432,83 @@ public class AgricultureController {
     }
     
     /**
-     * 添加商品接口
+     * 添加商品接口（支持图片上传）
      * 接口路径: POST /api/products/farmer/newProduct
-     * @param request 商品信息
+     * @param productName 商品名称
+     * @param price 商品价格
+     * @param producer 生产者
+     * @param totalVolumn 总数量
+     * @param userId 农户ID
+     * @param file 可选的商品图片
      * @return 添加结果
      */
     @PostMapping("/products/farmer/newProduct")
-    public Result<Map<String, Object>> addProduct(@RequestBody Map<String, Object> request) {
+    public Result<Map<String, Object>> addProduct(
+            @RequestParam("productName") String productName,
+            @RequestParam("price") double price,
+            @RequestParam(value = "producer", required = false, defaultValue = "") String producer,
+            @RequestParam("totalVolumn") int totalVolumn,
+            @RequestParam("userId") int userId,
+            @RequestPart(value = "file", required = false) MultipartFile file) {
         try {
             // 参数校验
-            if (request == null) {
-                return Result.error(400, "请求参数不能为空");
-            }
-            
-            // 验证必填参数
-            if (!request.containsKey("productName") || request.get("productName") == null) {
+            if (productName == null || productName.trim().isEmpty()) {
                 return Result.error(400, "参数错误：商品名称不能为空");
             }
-            if (!request.containsKey("price") || request.get("price") == null) {
-                return Result.error(400, "参数错误：商品价格不能为空");
+            if (price <= 0) {
+                return Result.error(400, "参数错误：商品价格必须大于0");
             }
-            if (!request.containsKey("userId") || request.get("userId") == null) {
-                return Result.error(400, "参数错误：农户ID不能为空");
+            if (userId <= 0) {
+                return Result.error(400, "参数错误：农户ID无效");
             }
-            if (!request.containsKey("totalVolumn") || request.get("totalVolumn") == null) {
-                return Result.error(400, "参数错误：总数量不能为空");
+            if (totalVolumn <= 0) {
+                return Result.error(400, "参数错误：总数量必须大于0");
             }
             
-            // 解析参数
-            String productName;
-            double price;
-            String producer = "";
             String productImg = "";
-            
-            Integer userId; // 农户ID
-            Integer totalVolumn; // 总销售量
-            
-            try {
-                productName = request.get("productName").toString();
-                price = Double.parseDouble(request.get("price").toString());
-                // 为可空字段提供默认值
-                producer = request.get("producer") != null ? request.get("producer").toString() : "";
-                productImg = request.get("productImg") != null ? request.get("productImg").toString() : "";
-                userId = Integer.parseInt(request.get("userId").toString());
-                totalVolumn = Integer.parseInt(request.get("totalVolumn").toString());
-            } catch (NumberFormatException e) {
-                return Result.error(400, "参数错误：数值类型格式不正确");
-            } catch (NullPointerException e) {
-                return Result.error(400, "参数错误：必填字段不能为空");
+            // 处理图片上传（如果有）
+            if (file != null && !file.isEmpty()) {
+                // 验证图片类型
+                String contentType = file.getContentType();
+                System.out.println(contentType);
+                if (!isValidImageType(contentType)) {
+                    return Result.error(400, "无效的图片类型，只支持jpg、png、gif格式");
+                }
+                String originalFilename = file.getOriginalFilename();
+                String extension=StringUtils.getFilenameExtension(originalFilename);
+
+                 // 确保扩展名不为空
+                if (extension == null || extension.isEmpty()) {
+                // 根据MIME类型推断扩展名
+                extension = getExtensionByContentType(contentType);
+                logger.info("用户ID为" + userId + "的文件无扩展名，根据MIME类型推断为: " + extension);
+                  } 
+                String newFilename="product_"+userId+"_"+UUID.randomUUID()+"."+extension;
+                String uploadRootDir=uploadBasePath + productImgPath;
+                String userDir=uploadRootDir+userId+"/";
+                System.out.println(newFilename);
+                System.out.println(uploadRootDir);
+                System.out.println(userDir);
+                // 创建基于用户ID的目录
+                java.io.File dir=new java.io.File(userDir);
+                if (!dir.exists()) {
+                    if (!dir.mkdirs()) {
+                        return Result.error(500, "无法创建上传目录");
+                    }
+                }
+                java.io.File dest=new java.io.File(userDir,newFilename);
+                // 保存文件
+                try {
+                    file.transferTo(dest);
+                    logger.info("用户ID为" + userId + "的农产品图片文件保存成功: " + dest.getAbsolutePath());
+                } catch (IOException e) {
+                    logger.severe("用户ID为" + userId + "的农产品图片文件保存失败: " + dest.getAbsolutePath());
+                    return Result.error(500, "文件保存失败：" + e.getMessage());
+                }
+                
+                // 生成可访问的URL
+                productImg = accessBaseUrl + productImgPath + userId + "/" + newFilename;
+                
             }
             
             // 验证农户ID是否存在
@@ -302,9 +524,8 @@ public class AgricultureController {
             product.setProducer(producer);
             product.setSalesVolume(0); // 设置销售量
             product.setSurplus(totalVolumn); // 初始库存为总销售量减去销售量
-            // salesVolume默认为0，不需要手动设置
             product.setProductImg(productImg);
-            product.setTotalVolumn(totalVolumn); // 设置总销售量
+            product.setTotalVolumn(totalVolumn); // 设置总数量
             product.setUserId(userId); // 设置农户ID
             
             // 保存到数据库
@@ -313,12 +534,13 @@ public class AgricultureController {
             // 构建响应数据
             Map<String, Object> responseData = new HashMap<>();
             responseData.put("productId", savedProduct.getProductId());
+            responseData.put("productImg", productImg);
     
             return Result.success(200, "商品添加成功", responseData);
             
         } catch (Exception e) {
-            return Result.error(500, "服务器内部错误：" + e.getMessage());
-        }
+            return Result.error(500, "文件保存失败：" + e.getMessage());
+        } 
     }
     
     /**
@@ -1264,16 +1486,16 @@ public class AgricultureController {
     public Result<Map<String, Object>> deleteProduct(@RequestBody Map<String, Object> request) {
         try {
             // 参数验证
-            if (request == null || !request.containsKey("product_id") || request.get("product_id") == null) {
+            if (request == null || !request.containsKey("productId") || request.get("productId") == null) {
                 return Result.error(400, "参数错误：农产品ID不能为空");
             }
-            // 尝试转换product_id为整数
+            // 尝试转换productId为整数
             Integer productId;
             try {
-                if (request.get("product_id") instanceof Number) {
-                    productId = ((Number) request.get("product_id")).intValue();
+                if (request.get("productId") instanceof Number) {
+                    productId = ((Number) request.get("productId")).intValue();
                 } else {
-                    productId = Integer.parseInt(request.get("product_id").toString());
+                    productId = Integer.parseInt(request.get("productId").toString());
                 }
             } catch (NumberFormatException e) {
                 return Result.error(400, "参数错误：农产品ID格式不正确");
