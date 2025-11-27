@@ -32,7 +32,7 @@ public class ProductComment {
     @Column(name = "root_comment_id")
     private Long rootCommentId; // 父评论id（可为空）
 
-    @Column(name = "to_comment_id", nullable = false)
+    @Column(name = "to_comment_id")
     private Long toCommentId; // 回复的评论id（可为空）
     
   

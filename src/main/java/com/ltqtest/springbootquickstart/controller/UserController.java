@@ -305,7 +305,6 @@ public class UserController {
      * @param realName 真实姓名
      * @param phone 手机号
      * @param email 邮箱
-     * @param imageUrl 头像URL
      * @return Result 更新结果对象
      */
     @PutMapping("/user/profile/update")
