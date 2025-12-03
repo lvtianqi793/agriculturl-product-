@@ -1023,7 +1023,7 @@ public class AgricultureController {
     /**
      * 删除购物车内的某件商品接口（买家端）
      * 接口路径: DELETE /api/products/buyer/shop/delete
-     * @param cartId 购物车ID
+     * @param request 其中包含cartId
      * @return 删除结果
      */
     @DeleteMapping("/products/buyer/shop/delete")
@@ -1190,7 +1190,7 @@ public class AgricultureController {
     /**
      * 农户取消订单接口
      * 接口路径: POST /api/products/farmer/cancelPurchase
-     * @param purchase_id 购买记录ID
+     * @param request 其中包括purchase_id 购买记录ID
      * @return 操作结果
      */
     @PostMapping("/products/farmer/cancelPurchase")
@@ -1313,7 +1313,7 @@ public class AgricultureController {
     /**
      * 买家收货接口
      * 接口路径: POST /api/products/buyer/receiveProduct
-     * @param purchase_id 购买记录ID
+     * @param request 包含purchase_id 购买记录ID
      * @return 操作结果
      */
     @PostMapping("/products/buyer/receiveProduct")
@@ -1368,7 +1368,7 @@ public class AgricultureController {
      /**
      * 买家取消订单接口
      * 接口路径: POST /api/products/buyer/cancelPurchase
-     * @param purchase_id 购买记录ID
+     * @param request 包含purchase_id 购买记录ID
      * @return 操作结果
      */
     @PostMapping("/products/buyer/cancelPurchase")
@@ -1422,7 +1422,7 @@ public class AgricultureController {
     /**
      * 买家退货订单接口
      * 接口路径: POST /api/products/buyer/returnProduct
-     * @param purchase_id 购买记录ID
+     * @param request 包含purchase_id 购买记录ID
      * @return 操作结果
      */
     @PostMapping("/products/buyer/returnProduct")
@@ -1479,7 +1479,7 @@ public class AgricultureController {
     /**
      * 下架已发布的农产品接口
      * 接口路径: DELETE /api/products/farmer/deleteProduct
-     * @param productId 农产品ID
+     * @param request  包含productId 农产品ID
      * @return 操作结果
      */
     @DeleteMapping("/products/farmer/deleteProduct")
