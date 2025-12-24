@@ -18,6 +18,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Value("${file.upload.access-base-url}")
     private String accessBaseUrl;
     
+    @Value("${file.upload.product-img-path}")
+    private String productImgPath;
+    
   
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -25,5 +28,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 例如：访问 http://localhost:8080/avatars/123/avatar_123_uuid.jpg 会映射到 C:/uploads/avatars/123/avatar_123_uuid.jpg
         registry.addResourceHandler("/" + avatarPath + "**")
                 .addResourceLocations("file:" + uploadBasePath + avatarPath);
+         // 添加产品图片的静态资源映射
+        registry.addResourceHandler("/productImages/**")
+                .addResourceLocations("file:" + uploadBasePath + productImgPath);
     }
 }

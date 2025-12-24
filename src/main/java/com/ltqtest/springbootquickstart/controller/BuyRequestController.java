@@ -112,7 +112,7 @@ public class BuyRequestController {
      */
     @GetMapping("/search")
     public Result<List<Map<String, Object>>> searchBuyRequests(
-           @RequestBody Map<String, String> requestBody) {
+        @RequestBody Map<String, String> requestBody) {
         try {
             List<BuyRequest> buyRequests;
             

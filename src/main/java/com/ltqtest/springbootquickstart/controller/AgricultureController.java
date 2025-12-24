@@ -1,6 +1,8 @@
 
 package com.ltqtest.springbootquickstart.controller;
 
+import com.alibaba.fastjson.JSON;
+import com.alipay.api.AlipayApiException;
 import com.ltqtest.springbootquickstart.common.Result;
 import com.ltqtest.springbootquickstart.entity.Product;
 import com.ltqtest.springbootquickstart.entity.Purchase;
@@ -11,12 +13,20 @@ import com.ltqtest.springbootquickstart.repository.ProductRepository;
 import com.ltqtest.springbootquickstart.repository.PurchaseRepository;
 import com.ltqtest.springbootquickstart.repository.ShoppingCartRepository;
 import com.ltqtest.springbootquickstart.repository.UserRepository;
+import com.ltqtest.springbootquickstart.util.PayUtil;
+
+import cn.hutool.json.JSONObject;
+import cn.hutool.log.Log;
+import jakarta.servlet.http.HttpServletRequest;
+
 import com.ltqtest.springbootquickstart.repository.UserAddressRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.method.P;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.util.StringUtils;
@@ -26,8 +36,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
 import java.util.*;
 import java.util.logging.Logger;
+
 
 
 @RestController
@@ -48,16 +60,22 @@ public class AgricultureController {
 
     @Autowired
     private UserAddressRepository userAddressRepository;
+
+    @Autowired
+    private PayUtil payUtil;
     
     // 日志记录器
     private static final Logger logger = Logger.getLogger(AgricultureController.class.getName());
     
     // 基础上传路径
-    private final String uploadBasePath = "uploads/";
+    @Value("${file.upload.base-path}")
+    private String uploadBasePath;
     // 图片上传子路径
-    private final String productImgPath = "product_images/";
+    @Value("${file.upload.product-img-path}")
+    private String productImgPath;
     // 访问基础URL
-    private final String accessBaseUrl = "/api/uploads/product_images/";
+    @Value("${file.upload.access-base-url}")
+    private String accessBaseUrl;
     // 商品图片接口URL前缀
     private final String productImageApiUrl = "/api/products/image/";
     
@@ -479,10 +497,10 @@ public class AgricultureController {
 
                  // 确保扩展名不为空
                 if (extension == null || extension.isEmpty()) {
-                // 根据MIME类型推断扩展名
-                extension = getExtensionByContentType(contentType);
-                logger.info("用户ID为" + userId + "的文件无扩展名，根据MIME类型推断为: " + extension);
-                  } 
+                    // 根据MIME类型推断扩展名
+                    extension = getExtensionByContentType(contentType);
+                    logger.info("用户ID为" + userId + "的文件无扩展名，根据MIME类型推断为: " + extension);
+                }
                 String newFilename="product_"+userId+"_"+UUID.randomUUID()+"."+extension;
                 String uploadRootDir=uploadBasePath + productImgPath;
                 String userDir=uploadRootDir+userId+"/";
@@ -491,15 +509,24 @@ public class AgricultureController {
                 System.out.println(userDir);
                 // 创建基于用户ID的目录
                 java.io.File dir=new java.io.File(userDir);
-                if (!dir.exists()) {
-                    if (!dir.mkdirs()) {
-                        return Result.error(500, "无法创建上传目录");
-                    }
+                // 安全地创建目录，避免路径遍历攻击
+                if (!dir.getCanonicalPath().startsWith(new java.io.File(uploadRootDir).getCanonicalPath())) {
+                    logger.severe("用户ID为" + userId + "尝试使用非法文件路径: " + userDir);
+                    return Result.error(400, "无效的文件路径");
                 }
-                java.io.File dest=new java.io.File(userDir,newFilename);
+                if (!dir.exists()) {
+                    boolean created = dir.mkdirs();
+                    if (!created) {
+                        logger.severe("无法创建用户ID为" + userId + "的农产品存储目录: " + userDir);
+                        return Result.error(500, "创建文件存储目录失败");
+                    }
+                    logger.info("为用户ID" + userId + "创建了农产品存储目录: " + userDir);
+                }
+                String filePath = userDir + newFilename;
+                java.io.File dest=new java.io.File(filePath);
                 // 保存文件
                 try {
-                    file.transferTo(dest);
+                    file.transferTo(dest.getAbsoluteFile());
                     logger.info("用户ID为" + userId + "的农产品图片文件保存成功: " + dest.getAbsolutePath());
                 } catch (IOException e) {
                     logger.severe("用户ID为" + userId + "的农产品图片文件保存失败: " + dest.getAbsolutePath());
@@ -508,6 +535,7 @@ public class AgricultureController {
                 
                 // 生成可访问的URL
                 productImg = accessBaseUrl + productImgPath + userId + "/" + newFilename;
+                System.out.println(productImg);
                 
             }
             
@@ -623,7 +651,7 @@ public class AgricultureController {
             // 解析参数
             Integer productId;
             Integer userId;
-            Integer amount;     
+            Integer amount;
             try {
                 productId = Integer.parseInt(request.get("productId").toString());
                 userId = Integer.parseInt(request.get("userId").toString());
@@ -662,7 +690,7 @@ public class AgricultureController {
             shoppingCart.setTotalPrice( amount * product.getPrice());
             // 保存到数据库
             shoppingCartRepository.save(shoppingCart);
-         
+        
             productRepository.save(product);
             
             // 构建响应数据
@@ -683,7 +711,7 @@ public class AgricultureController {
      * @return 购买结果
      */
     @PostMapping("products/buyer/purchase")
-    public Result<Map<String, Object>> purchaseProduct(@RequestBody Map<String, Object> request) {
+    public Result<Map<String, Object>> purchaseProduct(@RequestBody Map<String, Object> request) throws AlipayApiException {
         try {
             // 参数校验
             if (request == null) {
@@ -747,33 +775,68 @@ public class AgricultureController {
             purchase.setUserId(userId);
             purchase.setAmount(amount);
             purchase.setGetAddress(getAddress);
-            purchase.setStatus(3);
+            purchase.setStatus(2);
             // 计算总价，注意类型转换
             purchase.setTotalPrice((double) amount * product.getPrice());
             
             // 保存购买记录
             Purchase savedPurchase = purchaseRepository.save(purchase);
             
-            // 更新商品库存
-            product.setSurplus(product.getSurplus() - amount);
-            product.setSalesVolume(product.getSalesVolume() + amount);
-            productRepository.save(product);
-            
             // 构建响应数据
             Map<String, Object> responseData = new HashMap<>();
             responseData.put("purchaseId", savedPurchase.getPurchaseId());
             
-            return Result.success(200, "购买成功", responseData);
+            responseData.put("alipay", payUtil.sendRequestToAlipay(purchase.getTotalPrice(), savedPurchase.getPurchaseId(), "购买商品支付"));
+
+            return Result.success(200, "请支付", responseData);
             
         } catch (Exception e) {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }
     }
+    
+    /**
+     * 支付成功回调接口
+     * @param request 支付宝异步回调请求
+     * @return 支付结果
+     */
+    @PostMapping("products/buyer/purchaseReturn")
+    public Result<Map<String, Object>> purchaseReturn(HttpServletRequest request) throws ParseException {
+        try {
+            Log.get().info("=>支付宝异步回调");
+            Map<String, String> params = new HashMap<>();
+            Map<String, String[]> requestParams = request.getParameterMap();
+            for (String name : requestParams.keySet()) {
+                params.put(name, request.getParameter(name));
+                // System.out.println(name + " = " + request.getParameter(name));
+            }
+            String tradeStatus = params.get("trade_status");
+            if (tradeStatus.equals("TRADE_SUCCESS")) {
+                //支付成功，更新订单状态
+                String tradeNo = params.get("out_trade_no");
+                Purchase purchase = purchaseRepository.findByPurchaseId(Integer.parseInt(tradeNo));
+                if (purchase != null) {
+                    //更新购买记录状态为已支付
+                    purchase.setStatus(3);
+                    purchaseRepository.save(purchase);
+                    //更新商品库存和销量
+                    Product product = productRepository.findByProductId(purchase.getProductId());
+                    if (product != null) {
+                        product.setSurplus(product.getSurplus() - purchase.getAmount());
+                        product.setSalesVolume(product.getSalesVolume() + purchase.getAmount());
+                        productRepository.save(product);
+                    }
+                }
+                return Result.success(200, "支付成功");
+            } else {
+                return Result.error(400, "支付失败");
+            }
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
 
-
-
-
- /**
+    /**
      * 查看已售出的商品接口（农户端）
      * 接口路径: GET /api/soldout
      * @param userId 农户ID
@@ -941,13 +1004,11 @@ public class AgricultureController {
             }
             
             // 验证必填参数
-           if(!request.containsKey("cartId") || request.get("cartId") == null) {
-               return Result.error(400, "参数错误：购物车ID不能为空");
-           }
-          
+            if(!request.containsKey("cartId") || request.get("cartId") == null) {
+                return Result.error(400, "参数错误：购物车ID不能为空");
+            }
             
             // 解析参数
-           
             Integer cartId;
             
             try {
@@ -1002,7 +1063,8 @@ public class AgricultureController {
             // 计算总价
             purchase.setTotalPrice((double) amount * product.getPrice());
             purchase.setStatus(3);
-            // 保存购买记录
+
+            // 保存购买记录     ````
             purchaseRepository.save(purchase);
             
             // 更新商品库存
@@ -1080,7 +1142,6 @@ public class AgricultureController {
             if (userId == null || userId <= 0) {
                 return Result.error(400, "参数错误：农户ID无效");
             }
-           
             // 验证农户是否存在
             Optional<User> userOptional = userRepository.findByUserId(userId);
             if (!userOptional.isPresent()) {
@@ -1365,7 +1426,7 @@ public class AgricultureController {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }
     }
-     /**
+    /**
      * 买家取消订单接口
      * 接口路径: POST /api/products/buyer/cancelPurchase
      * @param request 包含purchase_id 购买记录ID
@@ -1394,7 +1455,7 @@ public class AgricultureController {
             // 参数有效性验证
             if (purchase_id <= 0) {
                 return Result.error(400, "参数错误：购买记录ID无效");
-            }   
+            }
             // 查询购买记录是否存在
             Optional<Purchase> purchaseOptional = purchaseRepository.findById(purchase_id);
             if (!purchaseOptional.isPresent()) {
@@ -1412,6 +1473,11 @@ public class AgricultureController {
             // 更新购买记录状态为6（取消状态）
             purchase.setStatus(6);
             purchaseRepository.save(purchase);
+            Product product = productRepository.findByProductId(purchase.getProductId());
+            // 恢复商品库存
+            product.setSurplus(product.getSurplus() + purchase.getAmount());
+            product.setSalesVolume(product.getSalesVolume() - purchase.getAmount());
+            productRepository.save(product);
             
             return Result.success(200, "已成功取消");
             
@@ -1468,6 +1534,11 @@ public class AgricultureController {
             // 更新购买记录状态为7（退货状态）
             purchase.setStatus(7);
             purchaseRepository.save(purchase);
+            Product product = productRepository.findByProductId(purchase.getProductId());
+            // 恢复商品库存
+            product.setSurplus(product.getSurplus() + purchase.getAmount());
+            product.setSalesVolume(product.getSalesVolume() - purchase.getAmount());
+            productRepository.save(product);
             
             return Result.success(200, "已成功退货");
             
@@ -1549,7 +1620,7 @@ public class AgricultureController {
         }
     }
 
-     /**
+    /**
      * 查看已保存的地址接口
      * 接口路径: GET /api/products/buyer/getSavedAddress
      * @param userId 用户ID
