@@ -1,12 +1,20 @@
 package com.ltqtest.springbootquickstart.controller;
 
 import com.ltqtest.springbootquickstart.common.Result;
+import com.ltqtest.springbootquickstart.entity.DeepseekRequest;
 import com.ltqtest.springbootquickstart.entity.Expert;
 import com.ltqtest.springbootquickstart.entity.ExpertAppointment;
+import com.ltqtest.springbootquickstart.entity.ExpertUserChatRecord;
 import com.ltqtest.springbootquickstart.entity.User;
 import com.ltqtest.springbootquickstart.repository.ExpertRepository;
+import com.ltqtest.springbootquickstart.repository.ExpertUserChatRecordRepository;
 import com.ltqtest.springbootquickstart.repository.ExpertAppointmentRepository;
 import com.ltqtest.springbootquickstart.repository.UserRepository;
+import com.mashape.unirest.http.HttpResponse;
+import com.mashape.unirest.http.Unirest;
+
+import cn.hutool.log.Log;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,10 +23,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+
+import com.google.gson.Gson;
+
 
 @RestController
 @RequestMapping("/api")
@@ -32,6 +50,11 @@ public class ExpertController {
     
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private ExpertUserChatRecordRepository expertUserChatRecordRepository;
+
+    private final Gson gson = new Gson();
 
     /**
      * 获取所有专家接口
@@ -93,7 +116,6 @@ public class ExpertController {
             }
             
             // 解析参数 - 同时支持下划线和驼峰命名格式
-           
             Integer userId;
             try {
                 // 优先使用驼峰格式，如果不存在则使用下划线格式
@@ -755,6 +777,194 @@ public class ExpertController {
             
             // 构建响应数据
             return Result.success(200, "获取预约日程成功", appointmentList);
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+    /**
+     * deepseek api: sk-e097c59ee6914985a2283ed2212b9ead
+     * AI问答接口
+     * 接口路径: POST /api/expert/ask
+     */
+    @PostMapping("/expert/ask/ai")
+    public Result<Object> askExpert(@RequestBody Map<String, Object> request) {
+        try {
+            // 参数校验
+            if (request == null) {
+                return Result.error(400, "请求参数不能为空");
+            }
+            // if (!request.containsKey("expertId") || request.get("expertId") == null) {
+            //     return Result.error(400, "参数错误：专家ID不能为空");
+            // }
+            if (!request.containsKey("question") || request.get("question") == null) {
+                return Result.error(400, "参数错误：问题不能为空");
+            }
+            if (!request.containsKey("userId") || request.get("userId") == null) {
+                return Result.error(400, "参数错误：用户ID不能为空");
+            }
+
+            // 解析参数
+            // Integer expertId;
+            Integer userId;
+            // try {
+            //     expertId = Integer.parseInt(request.get("expertId").toString());
+            // } catch (NumberFormatException e) {
+            //     return Result.error(400, "参数错误：专家ID格式不正确");
+            // }
+            try {
+                userId = Integer.parseInt(request.get("userId").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：用户ID格式不正确");
+            }
+
+            String question = request.get("question").toString();
+
+            // 验证专家是否存在
+            // Expert expert = expertRepository.findByExpertId(expertId).orElse(null);
+            // if (expert == null) {
+            //     return Result.error(404, "专家不存在");
+            // }
+            User user = userRepository.findByUserId(userId).orElse(null);
+            if (user == null) {
+                return Result.error(404, "用户不存在");
+            }
+
+            List <DeepseekRequest.Message> messages = new ArrayList<>();
+
+            // 添加系统角色提示，设定专家身份
+            messages.add(DeepseekRequest.Message.builder().role("system").content("你是一个农业专家").build());
+
+            // 添加用户问题
+            messages.add(DeepseekRequest.Message.builder().role("user").content(question).build());
+
+            DeepseekRequest requestBody = DeepseekRequest.builder()
+                    .model("deepseek-chat")
+                    .messages(messages)
+                    .build();
+            
+            // 调用DeepSeek API获取回答
+            String apiUrl = "https://api.deepseek.com/v1/chat/completions";
+            String apiKey = "sk-e097c59ee6914985a2283ed2212b9ead"; // API密钥
+            HttpResponse<String> response = Unirest.post(apiUrl)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer "+ apiKey)
+                .body(gson.toJson(requestBody))
+                .asString();
+            
+            // 构建响应数据
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("answer", response.getBody());
+            
+            return Result.success(200, "AI回答成功", responseData);
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取专家与用户聊天记录接口
+     * 接口路径: GET /api/expert/chat-records
+     */
+    @GetMapping("/expert/chat-records")
+    public Result<List<Map<String, Object>>> getExpertUserChatRecords(@RequestBody Map<String, Object> request) {
+        try {
+            // 参数校验
+            if (request == null) {
+                return Result.error(400, "请求参数不能为空");
+            }
+            if (!request.containsKey("expertId") || request.get("expertId") == null) {
+                return Result.error(400, "参数错误：专家ID不能为空");
+            }
+            if (!request.containsKey("userId") || request.get("userId") == null) {
+                return Result.error(400, "参数错误：用户ID不能为空");
+            }
+            // 解析参数
+            Integer expertId;
+            Integer userId;
+            try {
+                expertId = Integer.parseInt(request.get("expertId").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：专家ID格式不正确");
+            }
+            try {
+                userId = Integer.parseInt(request.get("userId").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：用户ID格式不正确");
+            }
+
+            Expert expert = expertRepository.findByExpertId(expertId).orElse(null);
+            if (expert == null) {
+                return Result.error(404, "专家不存在");
+            }
+            User user = userRepository.findByUserId(userId).orElse(null);
+            if (user == null) {
+                return Result.error(404, "用户不存在");
+            }
+
+            // System.out.println("开始查询聊天记录");
+            // System.out.println("专家ID: " + expertId + ", 用户ID: " + userId);
+
+            // 查询聊天记录
+            List<ExpertUserChatRecord> chatRecords = expertUserChatRecordRepository.findByExpertIdAndUserId(expertId, userId);
+
+            System.out.println("查询到聊天记录数量: " + chatRecords.size());
+            System.out.println("聊天记录内容: " + chatRecords);
+            // 转换数据格式
+            List<Map<String, Object>> recordList = new ArrayList<>();
+            for (ExpertUserChatRecord record : chatRecords) {
+                Map<String, Object> recordMap = new HashMap<>();
+                recordMap.put("euc_id", record.getEuChatId());
+                recordMap.put("expertId", record.getExpertId());
+                recordMap.put("userId", record.getUserId());
+                recordMap.put("question", record.getQuestion());
+                recordMap.put("answer", record.getAnswer());
+                recordMap.put("time", record.getSendTime().toString());
+                recordList.add(recordMap);
+            }
+            
+            return Result.success(200, "获取聊天记录成功", recordList);
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 专家回答用户接口
+     * 接口路径: POST /api/expert/answer
+     */
+    @PostMapping("/expert/answer")
+    public Result<Map<String, Object>> expertAnswer(@RequestBody Map<String, Object> request) {
+        try {
+            // 参数校验
+            if (request == null) {
+                return Result.error(400, "请求参数不能为空");
+            }
+            if (!request.containsKey("euc_id") || request.get("euc_id") == null) {
+                return Result.error(400, "参数错误：聊天记录ID不能为空");
+            }
+            if (!request.containsKey("answer") || request.get("answer") == null) {
+                return Result.error(400, "参数错误：回答不能为空");
+            }
+
+            // 解析参数
+            Long eucId;
+            try {
+                eucId = Long.parseLong(request.get("euc_id").toString());
+            } catch (NumberFormatException e) {
+                return Result.error(400, "参数错误：聊天记录ID格式不正确");
+            }
+            String answer = request.get("answer").toString();
+            // 查询聊天记录
+            ExpertUserChatRecord chatRecord = expertUserChatRecordRepository.findByEuChatId(eucId)
+                    .orElseThrow(() -> new RuntimeException("聊天记录不存在"));
+            // 更新回答内容和时间
+            chatRecord.setAnswer(answer);
+            chatRecord.setSendTime(LocalDateTime.now());
+            expertUserChatRecordRepository.save(chatRecord);
+
+            return Result.success(200, "回答成功");
         } catch (Exception e) {
             return Result.error(500, "服务器内部错误：" + e.getMessage());
         }

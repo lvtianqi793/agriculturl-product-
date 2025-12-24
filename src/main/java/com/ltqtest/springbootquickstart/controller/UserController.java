@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 import org.springframework.web.multipart.MultipartFile;
 import com.ltqtest.springbootquickstart.common.Result;
+import com.ltqtest.springbootquickstart.entity.ExpertUserChatRecord;
 import com.ltqtest.springbootquickstart.entity.User;
 import com.ltqtest.springbootquickstart.entity.UserAddress;
 import com.ltqtest.springbootquickstart.repository.UserRepository;
+import com.ltqtest.springbootquickstart.repository.ExpertUserChatRecordRepository;
 import com.ltqtest.springbootquickstart.repository.UserAddressRepository;
 
 import java.util.ArrayList;
@@ -33,6 +35,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.io.IOException;
 import java.io.File;
 import java.util.Base64;
@@ -50,10 +53,10 @@ public class UserController {
     
     @Autowired
     private UserAddressRepository userAddressRepository;
+
+    @Autowired
+    private ExpertUserChatRecordRepository expertUserChatRecordRepository;
     
-    // 不再需要密码加密器
-    
-    // 从配置文件中读取文件上传路径
     @Value("${file.upload.base-path}")
     private String uploadBasePath;
     
@@ -171,7 +174,7 @@ public class UserController {
      */
     @GetMapping("/user/profile")
     public Result<Map<String, Object>> getUser(@RequestParam("userId") Integer userId,
-                                             @RequestParam(value = "imageReturnFormat", defaultValue = "url") String imageReturnFormat) {
+                                            @RequestParam(value = "imageReturnFormat", defaultValue = "url") String imageReturnFormat) {
         try {
             // 验证参数
             if(userId == null || userId <= 0) {
@@ -266,7 +269,7 @@ public class UserController {
             // 构建文件完整路径
             String filePath = uploadBasePath + avatarPath + userId + "/" + fileName;
             File imageFile = new File(filePath);
-            
+
             // 检查文件是否存在
             if (!imageFile.exists() || !imageFile.isFile()) {
                 logger.warning("用户ID为" + userId + "的头像文件不存在: " + filePath);
@@ -508,9 +511,10 @@ public class UserController {
             }
             
             // 保存文件
-            java.io.File dest = new java.io.File(userDir + newFilename);
+            String filePath = userDir + newFilename;
+            java.io.File dest = new java.io.File(filePath);
             try {
-                file.transferTo(dest);
+                file.transferTo(dest.getAbsoluteFile());
                 logger.info("用户ID为" + userId + "的头像文件保存成功: " + dest.getAbsolutePath());
             } catch (Exception e) {
                 logger.severe("用户ID为" + userId + "的头像文件保存失败: " + e.getMessage());
@@ -749,4 +753,39 @@ public class UserController {
         }
     }
 
+    /**
+     * 用户提问专家接口
+     * 接口路径: POST /api/user/question
+     */
+    @PostMapping("/user/question")
+    public Result<Map<String, Object>> userQuestion(@RequestBody Map<String, Object> request) {
+        try {
+            // 参数校验
+            Integer userId = (Integer) request.get("userId");
+            Integer expertId = (Integer) request.get("expertId");
+            String question = (String) request.get("question");
+            if (userId == null || userId <= 0 || expertId == null || expertId <= 0 || question == null || question.trim().isEmpty()) {
+                return Result.error(400, "参数错误，userId、expertId不能为空且必须大于0，question不能为空");
+            }
+            
+            // System.out.println("用户ID: " + userId + ", 专家ID: " + expertId + ", 提问内容: " + question);
+
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("expertId", expertId);
+            responseData.put("userId", userId);
+            responseData.put("question", question);
+
+            ExpertUserChatRecord chatRecord = new ExpertUserChatRecord();
+            chatRecord.setUserId(userId);
+            chatRecord.setExpertId(expertId);
+            chatRecord.setQuestion(question);
+            LocalDateTime now = LocalDateTime.now();
+            chatRecord.setSendTime(now);
+            expertUserChatRecordRepository.save(chatRecord);
+
+            return Result.success(200, "提问成功");
+        } catch (Exception e) {
+            return Result.error(500, "服务器内部错误：" + e.getMessage());
+        }
+    }
 }
